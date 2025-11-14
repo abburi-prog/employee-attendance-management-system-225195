@@ -13,10 +13,27 @@ async function getCurrentUserSafe() {
   }
 }
 
+/**
+ * Normalize a Supabase response into { data, error } without throwing.
+ */
+function normalize(resp) {
+  const data = resp?.data ?? null;
+  const error = resp?.error ?? null;
+  return { data, error };
+}
+
 // PUBLIC_INTERFACE
 export async function applyLeave(payload) {
-  /** Inserts a leave request. Caller must ensure authentication. */
-  return await supabase.from("leave_requests").insert(payload);
+  /**
+   * Inserts a leave request. Caller must ensure authentication.
+   * Returns normalized { data, error } and never throws.
+   */
+  try {
+    const resp = await supabase.from("leave_requests").insert(payload);
+    return normalize(resp);
+  } catch (e) {
+    return { data: null, error: { message: e?.message || "Failed to submit leave request" } };
+  }
 }
 
 // PUBLIC_INTERFACE
