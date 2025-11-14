@@ -1,59 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import './App.css';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import ThemeProvider from './theme/ThemeProvider';
+import ToastProvider from './components/ToastProvider';
+import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
-import AdminPage from './pages/AdminPage';
-import NavBar from './components/NavBar';
+import Attendance from './pages/Attendance';
+import Admin from './pages/Admin';
+import Settings from './pages/Settings';
+import NotAuthorized from './pages/NotAuthorized';
 
 /**
- * NoOpProtected is a no-op wrapper that simply renders children.
- * It replaces the previous ProtectedRoute to make routes public while preserving structure.
+ * AppShell composes providers and routes. All routes are public; Admin page
+ * itself handles role message. Default route redirects to /dashboard.
  */
 // PUBLIC_INTERFACE
-function NoOpProtected({ children }) {
-  /** Public wrapper that renders its children without auth checks. */
-  return children;
-}
-
-// PUBLIC_INTERFACE
 function AppShell() {
-  const [theme, setTheme] = useState('light');
-
-  // Effect to apply theme to document element
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
-
-  // PUBLIC_INTERFACE
-  const toggleTheme = () => {
-    setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
-  };
-
   return (
     <BrowserRouter>
-      <div className="App" style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
-        <NavBar theme={theme} onToggle={toggleTheme} />
-        <main style={{ padding: 16 }}>
-          <Routes>
-            {/* Default to public dashboard */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            {/* Public dashboard */}
-            <Route path="/dashboard" element={<Dashboard />} />
-            {/* Admin remains routable; currently public via NoOpProtected.
-                If admin auth is reintroduced later, swap NoOpProtected with a real guard. */}
-            <Route
-              path="/admin"
-              element={
-                <NoOpProtected>
-                  <AdminPage />
-                </NoOpProtected>
-              }
-            />
-            <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
-          </Routes>
-        </main>
-      </div>
+      <ThemeProvider>
+        <ToastProvider>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/attendance" element={<Attendance />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/not-authorized" element={<NotAuthorized />} />
+              <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
+            </Routes>
+          </Layout>
+        </ToastProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

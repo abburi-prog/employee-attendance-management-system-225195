@@ -3,33 +3,61 @@
 Modern React application for managing and tracking employee attendance.
 Styled with Tailwind (Ocean Professional theme). Supabase client is configured for optional future authentication and data storage.
 
-## Features
+## Pages and Routing
 
-- Public dashboard by default (no login required)
-- Optional authentication context preserved for future use (signUp, signIn, signOut, profile fetch)
-- Pages: Dashboard, Admin (admin view shows notice unless authenticated with admin role)
-- Components: ClockInOut, AttendanceTable, AdminDashboard, NavBar
-- Routing via react-router-dom v6
-- TailwindCSS with Ocean Professional theme
-- Utilities for date/time formatting and error handling
+- / → redirects to /dashboard
+- /dashboard → overview and quick components
+- /attendance → clock-in/out with today's status and history (filters, pagination)
+- /admin → KPIs, attendance overview table with filters/search/export, employees list (visible only if role === 'admin')
+- /settings → feature flags placeholder
+- /not-authorized → friendly message for restricted access
 
-## Prerequisites
+## Layout and Theme
 
-- Node.js 18+
-- (Optional) Supabase project if you plan to enable authentication and data storage
+- TopNav shows app title and user/role badge (fallback to Guest/employee).
+- SideNav shows Dashboard, Attendance, Admin (role === 'admin'), Settings.
+- ThemeProvider implements Ocean Professional palette:
+  - primary #2563EB, success/secondary #F59E0B, error #EF4444, background #f9fafb, surface #ffffff, text #111827
+- Accessible components with keyboard focus states.
+
+## Data Layer and Mock/API Mode
+
+- services/attendanceService.js reads REACT_APP_API_BASE. If not set, runs in MOCK mode using in-memory arrays.
+- Functions:
+  - getTodayStatus, clockIn, clockOut
+  - getAttendanceHistory
+  - getAdminOverview, getAdminAttendance
+  - listEmployees
+- Mock mode simulates latency and supports filters, pagination, CSV export.
+- If you provide a backend, set REACT_APP_API_BASE to the REST base URL.
+
+## Hooks
+
+- useAttendance: Provides today's status, clock in/out actions, history (with pagination and date filters), loading/error.
+- useAdminData: Provides KPIs, attendance rows with filters, employees list.
+
+## Shared Components
+
+- Button, Card, KPIStat, Table, Pagination, DateRangePicker, ToastProvider.
+
+## Authentication and Roles
+
+- Auth remains optional. Role is resolved from profile.role when available; otherwise defaults to 'employee'.
+- Admin menu item is hidden for non-admin; direct /admin access renders NotAuthorized.
 
 ## Environment
 
-1. Copy .env.example to .env and set (optional for now):
+Copy .env.example to .env and set as needed:
+
 ```
-REACT_APP_SUPABASE_URL=your-url
-REACT_APP_SUPABASE_KEY=your-anon-key
+REACT_APP_SUPABASE_URL=
+REACT_APP_SUPABASE_KEY=
 REACT_APP_FRONTEND_URL=http://localhost:3000
+REACT_APP_API_BASE=   # if empty → mock mode
+REACT_APP_FEATURE_FLAGS={}
 ```
 
-2. If enabling Supabase-backed features, open `SUPABASE.md` and run the SQL in your Supabase SQL Editor to create:
-  - attendance table + RLS policies
-  - profiles table + trigger/function + RLS policies
+For Supabase setup details see SUPABASE.md.
 
 ## Install and Run
 
@@ -46,17 +74,25 @@ App runs at http://localhost:3000
 npm run build
 ```
 
+## Tests
+
+- A smoke test renders the app and checks for the header "Employee Attendance".
+- Run: `npm test`
+
 ## Project Structure
 
-- src/context/AuthContext.jsx: Optional auth state and helpers
-- src/supabase/client.js: Supabase client reading REACT_APP_SUPABASE_URL/KEY
-- src/pages: Dashboard, AdminPage
-- src/components: NavBar, ClockInOut, AttendanceTable, AdminDashboard
-- src/utils: datetime.js, errors.js
-- tailwind.config.js, postcss.config.js, src/index.css: Tailwind and theme setup
+- src/theme/ThemeProvider.jsx
+- src/components/ToastProvider.jsx
+- src/components/layout/{TopNav,SideNav,Layout}.jsx
+- src/components/ui/{Button,Card,KPIStat,Table,Pagination,DateRangePicker}.jsx
+- src/services/attendanceService.js
+- src/hooks/{useAttendance,useAdminData}.js
+- src/pages/{Dashboard,Attendance,Admin,Settings,NotAuthorized}.jsx
+- src/context/AuthContext.jsx
+- src/supabase/client.js
 
 ## Notes
 
 - Do not hardcode Supabase credentials. Use env vars.
-- Admin page shows a notice unless the authenticated user's profile.role === 'admin'.
-- For email confirmation behavior see SUPABASE.md if/when auth is enabled.
+- Admin page shows Not Authorized unless profile.role === 'admin'.
+- No login route; flows work without authentication by design.
