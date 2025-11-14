@@ -10,6 +10,10 @@ import Attendance from './pages/Attendance';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
 import NotAuthorized from './pages/NotAuthorized';
+import ApplyLeave from "./pages/ApplyLeave";
+import MyLeaveHistory from "./pages/MyLeaveHistory";
+import AdminLeaveDashboard from "./pages/AdminLeaveDashboard";
+import LeaveBalance from "./pages/LeaveBalance";
 
 /**
  * AppShell composes providers and routes. All routes are public; Admin page
@@ -29,6 +33,10 @@ function AppShell() {
               <Route path="/admin" element={<Admin />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/not-authorized" element={<NotAuthorized />} />
+              <Route path="/apply-leave" element={<ApplyLeave />} />
+              <Route path="/my-leaves" element={<MyLeaveHistory />} />
+              <Route path="/admin/leaves" element={<AdminLeaveDashboard />} />
+              <Route path="/leave-balance" element={<LeaveBalance />} />
               <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
             </Routes>
           </Layout>
