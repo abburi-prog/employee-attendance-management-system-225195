@@ -8,6 +8,7 @@ import DateRangePicker from '../components/ui/DateRangePicker';
 import Button from '../components/ui/Button';
 import NotAuthorized from './NotAuthorized';
 import { useAuth } from '../context/AuthContext';
+import { formatTimeHHmmss } from '../utils/time';
 
 /**
  * Admin page: KPIs, attendance overview table with filters and CSV export, and employee list placeholder.
@@ -32,11 +33,30 @@ export default function Admin() {
     { key: 'hours', title: 'Hours', dataIndex: 'hours' },
   ];
 
-  // Compute CSV regardless of role; component may early-return but hooks are still consistently called.
+  // Prepare view rows with formatted HH:mm:ss while keeping source data intact
+  const viewRows = useMemo(
+    () =>
+      attRows.map((r) => ({
+        ...r,
+        checkIn: r.checkIn && r.checkIn !== '-' ? formatTimeHHmmss(r.checkIn) : '-',
+        checkOut: r.checkOut && r.checkOut !== '-' ? formatTimeHHmmss(r.checkOut) : '-',
+      })),
+    [attRows]
+  );
+
+  // Compute CSV regardless of role; format times as HH:mm:ss for consistency
   const csvData = useMemo(() => {
     const header = ['Employee', 'Email', 'Department', 'Date', 'Check-In', 'Check-Out', 'Hours'];
     const lines = attRows.map((r) =>
-      [r.name, r.email, r.department, r.date, r.checkIn, r.checkOut, r.hours].join(',')
+      [
+        r.name,
+        r.email,
+        r.department,
+        r.date,
+        r.checkIn && r.checkIn !== '-' ? formatTimeHHmmss(r.checkIn) : '-',
+        r.checkOut && r.checkOut !== '-' ? formatTimeHHmmss(r.checkOut) : '-',
+        r.hours,
+      ].join(',')
     );
     return [header.join(','), ...lines].join('\n');
   }, [attRows]);
@@ -101,7 +121,7 @@ export default function Admin() {
           <div className="text-sm text-gray-600">Loading attendance...</div>
         ) : (
           <>
-            <Table columns={columns} data={attRows} empty="No matching records." />
+            <Table columns={columns} data={viewRows} empty="No matching records." />
             <div className="mt-3">
               <Pagination
                 page={filters.page}

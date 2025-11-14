@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabase/client';
 import { useAuth } from '../context/AuthContext';
+import { formatTimeHHmmss } from '../utils/time';
 
 /**
  * AttendanceTable lists the signed-in user's attendance records.
@@ -93,7 +94,7 @@ export default function AttendanceTable() {
               ) : (
                 rows.map((r) => (
                   <tr key={r.id}>
-                    <td style={cell}>{new Date(r.created_at).toLocaleString()}</td>
+                    <td style={cell}>{formatTimeHHmmss(r.created_at)}</td>
                     <td style={cell}>
                       <span
                         style={{

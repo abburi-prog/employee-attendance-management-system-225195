@@ -77,10 +77,6 @@ function todayYmd() {
   return `${y}-${m}-${day}`;
 }
 
-function timeHm(date = new Date()) {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
 function calcHours(checkIn, checkOut) {
   if (!checkIn || !checkOut) return 0;
   const [h1, m1] = checkIn.split(':').map((n) => parseInt(n, 10));
@@ -153,8 +149,8 @@ export async function getTodayStatus(userId = 'u-2') {
     const d = todayYmd();
     const row = mockDb.attendance.find((r) => r.userId === userId && r.date === d);
     if (!row) return { state: 'none' };
-    if (row.checkIn && !row.checkOut) return { state: 'in', checkInAt: row.checkIn };
-    if (row.checkIn && row.checkOut) return { state: 'out', checkInAt: row.checkIn, checkOutAt: row.checkOut };
+    if (row.checkInIso && !row.checkOutIso) return { state: 'in', checkInAt: row.checkInIso };
+    if (row.checkInIso && row.checkOutIso) return { state: 'out', checkInAt: row.checkInIso, checkOutAt: row.checkOutIso };
     return { state: 'none' };
   }
   try {
@@ -174,22 +170,23 @@ export async function clockIn(userId = 'u-2') {
     await simulateLatency();
     const d = todayYmd();
     let row = mockDb.attendance.find((r) => r.userId === userId && r.date === d);
+    const nowIso = new Date().toISOString();
     if (!row) {
-      row = { id: `a-${seq++}`, userId, date: d, checkIn: timeHm(), checkOut: null };
+      row = { id: `a-${seq++}`, userId, date: d, checkInIso: nowIso, checkOutIso: null };
       mockDb.attendance.unshift(row);
       // eslint-disable-next-line no-console
-      console.info('[AttendanceService:clockIn:mock] ok user=', userId, 'time=', row.checkIn);
-      return { ok: true, status: { state: 'in', checkInAt: row.checkIn } };
+      console.info('[AttendanceService:clockIn:mock] ok user=', userId, 'time=', row.checkInIso);
+      return { ok: true, status: { state: 'in', checkInAt: row.checkInIso } };
     }
-    if (row.checkIn && !row.checkOut) {
+    if (row.checkInIso && !row.checkOutIso) {
       return { ok: false, error: 'Already clocked in.' };
     }
     // Has checkOut for today, create new entry
-    row = { id: `a-${seq++}`, userId, date: d, checkIn: timeHm(), checkOut: null };
+    row = { id: `a-${seq++}`, userId, date: d, checkInIso: nowIso, checkOutIso: null };
     mockDb.attendance.unshift(row);
     // eslint-disable-next-line no-console
-    console.info('[AttendanceService:clockIn:mock:new-session] ok user=', userId, 'time=', row.checkIn);
-    return { ok: true, status: { state: 'in', checkInAt: row.checkIn } };
+    console.info('[AttendanceService:clockIn:mock:new-session] ok user=', userId, 'time=', row.checkInIso);
+    return { ok: true, status: { state: 'in', checkInAt: row.checkInIso } };
   }
   try {
     const data = await apiFetch(`/attendance/clock-in`, {
@@ -216,12 +213,12 @@ export async function clockOut(userId = 'u-2') {
     await simulateLatency();
     const d = todayYmd();
     const row = mockDb.attendance.find((r) => r.userId === userId && r.date === d);
-    if (!row || !row.checkIn) return { ok: false, error: 'Not clocked in yet.' };
-    if (row.checkOut) return { ok: false, error: 'Already clocked out.' };
-    row.checkOut = timeHm();
+    if (!row || !row.checkInIso) return { ok: false, error: 'Not clocked in yet.' };
+    if (row.checkOutIso) return { ok: false, error: 'Already clocked out.' };
+    row.checkOutIso = new Date().toISOString();
     // eslint-disable-next-line no-console
-    console.info('[AttendanceService:clockOut:mock] ok user=', userId, 'time=', row.checkOut);
-    return { ok: true, status: { state: 'out', checkInAt: row.checkIn, checkOutAt: row.checkOut } };
+    console.info('[AttendanceService:clockOut:mock] ok user=', userId, 'time=', row.checkOutIso);
+    return { ok: true, status: { state: 'out', checkInAt: row.checkInIso, checkOutAt: row.checkOutIso } };
   }
   try {
     const data = await apiFetch(`/attendance/clock-out`, {
@@ -250,9 +247,10 @@ export async function getAttendanceHistory({ userId = 'u-2', page = 1, pageSize 
       .map((r) => ({
         id: r.id,
         date: r.date,
-        checkIn: r.checkIn || '-',
-        checkOut: r.checkOut || '-',
-        hours: calcHours(r.checkIn, r.checkOut),
+        // Provide raw ISO timestamps; UI will format to HH:mm:ss
+        checkIn: r.checkInIso || '-',
+        checkOut: r.checkOutIso || '-',
+        hours: calcHours(r.checkInIso, r.checkOutIso),
       }));
     if (start) rows = rows.filter((r) => r.date >= start);
     if (end) rows = rows.filter((r) => r.date <= end);
@@ -279,7 +277,14 @@ export async function getAdminOverview({ date = todayYmd() } = {}) {
     const presentIds = new Set(todays.map((r) => r.userId));
     const presentToday = presentIds.size;
     const absentToday = totalEmployees - presentToday;
-    const late = todays.filter((r) => r.checkIn && r.checkIn > '09:30').length;
+    const late = todays.filter((r) => {
+      if (!r.checkInIso) return false;
+      const d = new Date(r.checkInIso);
+      if (isNaN(d.getTime())) return false;
+      const hours = d.getHours();
+      const minutes = d.getMinutes();
+      return hours > 9 || (hours === 9 && minutes > 30);
+    }).length;
     return { presentToday, absentToday, late, totalEmployees };
   }
   return apiFetch(`/admin/overview?date=${encodeURIComponent(date)}`);
@@ -301,9 +306,10 @@ export async function getAdminAttendance({ page = 1, pageSize = 10, start, end, 
         email: emp?.email || '',
         department: emp?.department || '',
         date: r.date,
-        checkIn: r.checkIn || '-',
-        checkOut: r.checkOut || '-',
-        hours: calcHours(r.checkIn, r.checkOut),
+        // Provide ISO values for formatting on UI
+        checkIn: r.checkInIso || '-',
+        checkOut: r.checkOutIso || '-',
+        hours: calcHours(r.checkInIso, r.checkOutIso),
       };
     });
     if (start) rows = rows.filter((r) => r.date >= start);

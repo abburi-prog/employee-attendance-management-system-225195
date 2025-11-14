@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabase/client';
+import { formatTimeHHmmss } from '../utils/time';
 
 /**
  * AdminDashboard:
@@ -85,7 +86,7 @@ export default function AdminDashboard() {
                 rows.map((r) => (
                   <tr key={r.id}>
                     <td style={{ padding: 8, borderTop: '1px solid #f3f4f6' }}>
-                      {new Date(r.created_at).toLocaleString()}
+                      {formatTimeHHmmss(r.created_at)}
                     </td>
                     <td style={{ padding: 8, borderTop: '1px solid #f3f4f6' }}>{r.user_id}</td>
                     <td style={{ padding: 8, borderTop: '1px solid #f3f4f6' }}>

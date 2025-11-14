@@ -40,6 +40,12 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
   - Access-Control-Allow-Origin should include your frontend origin (e.g., http://localhost:3000) during development.
   - Allow methods: GET, POST, OPTIONS. Allow headers: Content-Type, Authorization (if required).
 
+## Time Formatting
+
+- All displayed times (clock-in, clock-out, table timestamps) are shown as HH:mm:ss and respect the user's local timezone.
+- The UI uses a shared utility in `src/utils/time.js` (formatTimeHHmmss) to ensure consistent formatting.
+- In mock mode, the service now returns ISO timestamps (e.g., 2025-01-01T09:30:15.123Z) so seconds are preserved end-to-end.
+
 ## Hooks
 
 - useAttendance: Provides today's status, clock in/out actions, history (with pagination and date filters), loading/error.

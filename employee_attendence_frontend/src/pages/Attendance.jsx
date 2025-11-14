@@ -5,6 +5,7 @@ import Button from '../components/ui/Button';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import DateRangePicker from '../components/ui/DateRangePicker';
+import { formatTimeHHmmss } from '../utils/time';
 
 /**
  * Attendance page: Clock In/Out with today's status and history table with filters and pagination.
@@ -15,6 +16,7 @@ export default function AttendancePage() {
     today, loading, history, histLoading, page, pageSize, total, setPage, setStart, setEnd, onClockIn, onClockOut,
   } = useAttendance({});
 
+  // Columns expect formatted strings; history will carry ISO times and we format here if needed.
   const columns = [
     { key: 'date', title: 'Date', dataIndex: 'date' },
     { key: 'checkIn', title: 'Check-In', dataIndex: 'checkIn' },
@@ -22,12 +24,22 @@ export default function AttendancePage() {
     { key: 'hours', title: 'Hours', dataIndex: 'hours' },
   ];
 
+  const checkInText = today.checkInAt ? formatTimeHHmmss(today.checkInAt) : '-';
+  const checkOutText = today.checkOutAt ? formatTimeHHmmss(today.checkOutAt) : '-';
+
   const stateText =
     today.state === 'in'
-      ? `Clocked in at ${today.checkInAt}`
+      ? `Clocked in at ${checkInText}`
       : today.state === 'out'
-      ? `Clocked out at ${today.checkOutAt}`
+      ? `Clocked out at ${checkOutText}`
       : 'Not clocked in';
+
+  // Ensure history rows show seconds. If service provides raw ISO, map to formatted here.
+  const historyWithFormattedTimes = history.map((r) => ({
+    ...r,
+    checkIn: r.checkIn && r.checkIn !== '-' ? formatTimeHHmmss(r.checkIn) : '-',
+    checkOut: r.checkOut && r.checkOut !== '-' ? formatTimeHHmmss(r.checkOut) : '-',
+  }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -68,7 +80,7 @@ export default function AttendancePage() {
           <div className="text-sm text-gray-600">Loading history...</div>
         ) : (
           <>
-            <Table columns={columns} data={history} empty="No attendance records found." />
+            <Table columns={columns} data={historyWithFormattedTimes} empty="No attendance records found." />
             <div className="mt-3">
               <Pagination page={page} pageSize={pageSize} total={total} onChange={setPage} />
             </div>
