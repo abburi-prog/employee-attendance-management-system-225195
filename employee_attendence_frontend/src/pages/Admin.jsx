@@ -9,6 +9,7 @@ import Button from '../components/ui/Button';
 import NotAuthorized from './NotAuthorized';
 import { useAuth } from '../context/AuthContext';
 import { formatTimeHHmmss } from '../utils/time';
+import { formatDurationHMS, diffSecondsBetweenIso } from '../utils/duration';
 
 /**
  * Admin page: KPIs, attendance overview table with filters and CSV export, and employee list placeholder.
@@ -36,28 +37,37 @@ export default function Admin() {
   // Prepare view rows with formatted HH:mm:ss while keeping source data intact
   const viewRows = useMemo(
     () =>
-      attRows.map((r) => ({
-        ...r,
-        checkIn: r.checkIn && r.checkIn !== '-' ? formatTimeHHmmss(r.checkIn) : '-',
-        checkOut: r.checkOut && r.checkOut !== '-' ? formatTimeHHmmss(r.checkOut) : '-',
-      })),
+      attRows.map((r) => {
+        const inIso = r.checkIn && r.checkIn !== '-' ? r.checkIn : null;
+        const outIso = r.checkOut && r.checkOut !== '-' ? r.checkOut : null;
+        const secs = inIso && outIso ? diffSecondsBetweenIso(inIso, outIso) : 0;
+        return {
+          ...r,
+          checkIn: inIso ? formatTimeHHmmss(inIso) : '-',
+          checkOut: outIso ? formatTimeHHmmss(outIso) : '-',
+          hours: secs > 0 ? formatDurationHMS(secs) : '-',
+        };
+      }),
     [attRows]
   );
 
   // Compute CSV regardless of role; format times as HH:mm:ss for consistency
   const csvData = useMemo(() => {
     const header = ['Employee', 'Email', 'Department', 'Date', 'Check-In', 'Check-Out', 'Hours'];
-    const lines = attRows.map((r) =>
-      [
+    const lines = attRows.map((r) => {
+      const inIso = r.checkIn && r.checkIn !== '-' ? r.checkIn : null;
+      const outIso = r.checkOut && r.checkOut !== '-' ? r.checkOut : null;
+      const secs = inIso && outIso ? diffSecondsBetweenIso(inIso, outIso) : 0;
+      return [
         r.name,
         r.email,
         r.department,
         r.date,
-        r.checkIn && r.checkIn !== '-' ? formatTimeHHmmss(r.checkIn) : '-',
-        r.checkOut && r.checkOut !== '-' ? formatTimeHHmmss(r.checkOut) : '-',
-        r.hours,
-      ].join(',')
-    );
+        inIso ? formatTimeHHmmss(inIso) : '-',
+        outIso ? formatTimeHHmmss(outIso) : '-',
+        secs > 0 ? formatDurationHMS(secs) : '-',
+      ].join(',');
+    });
     return [header.join(','), ...lines].join('\n');
   }, [attRows]);
 

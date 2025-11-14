@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabase/client';
 import { useAuth } from '../context/AuthContext';
 import { formatTimeHHmmss } from '../utils/time';
+import { formatDurationHMS, diffSecondsBetweenIso } from '../utils/duration';
 
 /**
  * AttendanceTable lists the signed-in user's attendance records.
@@ -82,6 +83,7 @@ export default function AttendanceTable() {
               <tr>
                 <th style={headerCell}>Time</th>
                 <th style={headerCell}>Status</th>
+                <th style={headerCell}>Duration</th>
               </tr>
             </thead>
             <tbody>
@@ -92,25 +94,37 @@ export default function AttendanceTable() {
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => (
-                  <tr key={r.id}>
-                    <td style={cell}>{formatTimeHHmmss(r.created_at)}</td>
-                    <td style={cell}>
-                      <span
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: 999,
-                          background: r.status === 'in' ? '#DBEAFE' : '#FEF3C7',
-                          color: r.status === 'in' ? '#1E40AF' : '#92400E',
-                          fontSize: 12,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {r.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                rows.map((r, idx) => {
+                  // If this row is an 'out' event, try to find the next row (later in time) that is 'in' to pair
+                  let durCell = '-';
+                  if (r.status === 'out') {
+                    const prev = rows[idx + 1]; // because ordered desc by created_at
+                    if (prev && prev.status === 'in') {
+                      const secs = diffSecondsBetweenIso(prev.created_at, r.created_at);
+                      if (secs > 0) durCell = formatDurationHMS(secs);
+                    }
+                  }
+                  return (
+                    <tr key={r.id}>
+                      <td style={cell}>{formatTimeHHmmss(r.created_at)}</td>
+                      <td style={cell}>
+                        <span
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 999,
+                            background: r.status === 'in' ? '#DBEAFE' : '#FEF3C7',
+                            color: r.status === 'in' ? '#1E40AF' : '#92400E',
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {r.status}
+                        </span>
+                      </td>
+                      <td style={cell}>{durCell}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

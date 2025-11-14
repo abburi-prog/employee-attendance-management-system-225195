@@ -45,6 +45,12 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
 - All displayed times (clock-in, clock-out, table timestamps) are shown as HH:mm:ss and respect the user's local timezone.
 - The UI uses a shared utility in `src/utils/time.js` (formatTimeHHmmss) to ensure consistent formatting.
 - In mock mode, the service now returns ISO timestamps (e.g., 2025-01-01T09:30:15.123Z) so seconds are preserved end-to-end.
+- Worked duration formatting:
+  - `src/utils/duration.js` provides:
+    - `formatDurationHMS(totalSeconds)` → "X hours Y mins Z secs" with correct pluralization.
+    - `diffSecondsBetweenIso(startIso, endIso)` to compute total seconds between timestamps.
+  - Example: 12:37:02 → 13:49:04 yields `diffSecondsBetweenIso = 4322` and `formatDurationHMS(4322) = '1 hour 12 mins 2 secs'`.
+  - Attendance Today status, Attendance History, Admin table and CSV export now use the humanized duration.
 
 ## Hooks
 

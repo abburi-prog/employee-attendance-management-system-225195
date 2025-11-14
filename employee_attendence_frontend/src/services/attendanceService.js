@@ -78,11 +78,18 @@ function todayYmd() {
 }
 
 function calcHours(checkIn, checkOut) {
+  // Deprecated: retained for back-compat if older structures exist. Prefer calcSeconds and humanized format.
   if (!checkIn || !checkOut) return 0;
-  const [h1, m1] = checkIn.split(':').map((n) => parseInt(n, 10));
-  const [h2, m2] = checkOut.split(':').map((n) => parseInt(n, 10));
-  const minutes = (h2 * 60 + m2) - (h1 * 60 + m1);
-  return Math.max(0, Math.round((minutes / 60) * 100) / 100);
+  try {
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+    const diffSec = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
+    const hours = diffSec / 3600;
+    return Math.round(hours * 100) / 100;
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -247,10 +254,10 @@ export async function getAttendanceHistory({ userId = 'u-2', page = 1, pageSize 
       .map((r) => ({
         id: r.id,
         date: r.date,
-        // Provide raw ISO timestamps; UI will format to HH:mm:ss
+        // Provide raw ISO timestamps; UI will format to HH:mm:ss and humanized duration
         checkIn: r.checkInIso || '-',
         checkOut: r.checkOutIso || '-',
-        hours: calcHours(r.checkInIso, r.checkOutIso),
+        hours: calcHours(r.checkInIso, r.checkOutIso), // retained for compatibility, UI will override to humanized
       }));
     if (start) rows = rows.filter((r) => r.date >= start);
     if (end) rows = rows.filter((r) => r.date <= end);
@@ -306,7 +313,7 @@ export async function getAdminAttendance({ page = 1, pageSize = 10, start, end, 
         email: emp?.email || '',
         department: emp?.department || '',
         date: r.date,
-        // Provide ISO values for formatting on UI
+        // Provide ISO values for UI formatting (HH:mm:ss) and humanized duration in pages
         checkIn: r.checkInIso || '-',
         checkOut: r.checkOutIso || '-',
         hours: calcHours(r.checkInIso, r.checkOutIso),

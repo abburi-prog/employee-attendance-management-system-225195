@@ -6,6 +6,7 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import DateRangePicker from '../components/ui/DateRangePicker';
 import { formatTimeHHmmss } from '../utils/time';
+import { formatDurationHMS, diffSecondsBetweenIso } from '../utils/duration';
 
 /**
  * Attendance page: Clock In/Out with today's status and history table with filters and pagination.
@@ -27,19 +28,26 @@ export default function AttendancePage() {
   const checkInText = today.checkInAt ? formatTimeHHmmss(today.checkInAt) : '-';
   const checkOutText = today.checkOutAt ? formatTimeHHmmss(today.checkOutAt) : '-';
 
-  const stateText =
-    today.state === 'in'
-      ? `Clocked in at ${checkInText}`
-      : today.state === 'out'
-      ? `Clocked out at ${checkOutText}`
-      : 'Not clocked in';
+  let stateText = 'Not clocked in';
+  if (today.state === 'in') {
+    stateText = `Clocked in at ${checkInText}`;
+  } else if (today.state === 'out') {
+    const secs = diffSecondsBetweenIso(today.checkInAt, today.checkOutAt);
+    stateText = `Clocked out at ${checkOutText} • Worked ${formatDurationHMS(secs)}`;
+  }
 
-  // Ensure history rows show seconds. If service provides raw ISO, map to formatted here.
-  const historyWithFormattedTimes = history.map((r) => ({
-    ...r,
-    checkIn: r.checkIn && r.checkIn !== '-' ? formatTimeHHmmss(r.checkIn) : '-',
-    checkOut: r.checkOut && r.checkOut !== '-' ? formatTimeHHmmss(r.checkOut) : '-',
-  }));
+  // Ensure history rows show seconds and humanized duration (compute from ISO).
+  const historyWithFormattedTimes = history.map((r) => {
+    const checkInIso = r.checkIn && r.checkIn !== '-' ? r.checkIn : null;
+    const checkOutIso = r.checkOut && r.checkOut !== '-' ? r.checkOut : null;
+    const secs = checkInIso && checkOutIso ? diffSecondsBetweenIso(checkInIso, checkOutIso) : 0;
+    return {
+      ...r,
+      checkIn: checkInIso ? formatTimeHHmmss(checkInIso) : '-',
+      checkOut: checkOutIso ? formatTimeHHmmss(checkOutIso) : '-',
+      hours: secs > 0 ? formatDurationHMS(secs) : '-',
+    };
+  });
 
   return (
     <div className="flex flex-col gap-4">
