@@ -38,8 +38,14 @@ function ProtectedRoute() {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // No visible UI while loading; avoid layout shifts or flashing spinners
-  if (loading) return null;
+  // During auth initialization, render a minimal placeholder to avoid a blank screen.
+  if (loading) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <span className="text-sm text-gray-600">Loading…</span>
+      </div>
+    );
+  }
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;
@@ -57,7 +63,13 @@ function ProtectedRoute() {
 function PublicOnlyRoute() {
   const { user, loading } = useAuth();
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <span className="text-sm text-gray-600">Loading…</span>
+      </div>
+    );
+  }
   if (user) return <Navigate to="/dashboard" replace />;
 
   return <Outlet />;
@@ -125,7 +137,13 @@ function AppShell() {
 // PUBLIC_INTERFACE
 function AuthBoundaryRedirect() {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <span className="text-sm text-gray-600">Loading…</span>
+      </div>
+    );
+  }
   return <Navigate to={user ? "/dashboard" : "/login"} replace />;
 }
 

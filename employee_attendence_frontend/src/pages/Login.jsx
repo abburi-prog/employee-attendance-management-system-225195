@@ -83,9 +83,15 @@ export default function Login() {
     }
   };
 
-  // If user is present and auth is not loading, defensively block form and render a redirect link/state
+  // If user is present and auth is not loading, defensively block form; render a tiny placeholder as we redirect.
   if (!loading && user) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <div className="max-w-md mx-auto">
+        <Card title="Sign In">
+          <div className="text-sm text-gray-600">Redirecting…</div>
+        </Card>
+      </div>
+    );
   }
 
   const banner =

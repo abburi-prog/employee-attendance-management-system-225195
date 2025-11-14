@@ -125,7 +125,7 @@ export default function Dashboard() {
         }
       >
         {loadingLeaves ? (
-          null
+          <div className="text-sm text-gray-600">Loading recent leaves…</div>
         ) : errorLeaves ? (
           <div
             className="text-sm"
