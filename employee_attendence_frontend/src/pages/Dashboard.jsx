@@ -18,8 +18,7 @@ export default function Dashboard() {
   }
 
   if (!user) {
-    // Redirect unauthenticated users to login
-    navigate('/login');
+    // ProtectedRoute should handle redirect; render nothing here to avoid double navigation.
     return null;
   }
 

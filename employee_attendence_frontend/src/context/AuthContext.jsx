@@ -108,12 +108,14 @@ export function AuthProvider({ children }) {
      * Sign up user via email/password and store optional full_name in user metadata.
      * Also ensures profile can be created via RLS trigger in DB if configured.
      *
-     * Note: If you need a specific redirect after email confirmation, you can pass:
-     * options: { data: { full_name: fullName }, emailRedirectTo: process.env.REACT_APP_FRONTEND_URL }
-     * Alternatively, configure "Site URL" in Supabase Authentication settings.
+     * If REACT_APP_FRONTEND_URL is set, pass it as emailRedirectTo to ensure the confirmation
+     * link returns to this app (useful in development). Otherwise rely on Supabase Site URL.
      */
     setError(null);
-    const options = fullName ? { data: { full_name: fullName } } : undefined;
+    const redirectTo = process.env.REACT_APP_FRONTEND_URL;
+    const baseOptions = fullName ? { data: { full_name: fullName } } : {};
+    const options = redirectTo ? { ...baseOptions, emailRedirectTo: redirectTo } : baseOptions;
+
     const { data, error: sErr } = await supabase.auth.signUp({
       email,
       password,
