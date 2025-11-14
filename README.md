@@ -1,1 +1,3 @@
-# employee-attendance-management-system-225195
+# Project Repository
+
+This is the initial README file for the project.
