@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -33,7 +33,9 @@ function NavBar({ theme, onToggle }) {
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
         {user ? (
           <button
-            onClick={signOut}
+            onClick={async () => {
+              await signOut();
+            }}
             style={{
               padding: '8px 12px',
               borderRadius: 8,
@@ -57,6 +59,14 @@ function NavBar({ theme, onToggle }) {
   );
 }
 
+// ProtectedRoute to guard authenticated pages
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div style={{ padding: 24 }}>Loading...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
 // PUBLIC_INTERFACE
 function AppShell() {
   const [theme, setTheme] = useState('light');
@@ -77,10 +87,24 @@ function AppShell() {
         <NavBar theme={theme} onToggle={toggleTheme} />
         <main style={{ padding: 16 }}>
           <Routes>
-            <Route path="/" element={<Login />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/admin" element={<AdminPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
           </Routes>
         </main>

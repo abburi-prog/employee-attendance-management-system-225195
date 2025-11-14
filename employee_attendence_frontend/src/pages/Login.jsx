@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { supabase } from '../supabase/client';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * Login component that allows users to request a magic link via email.
- * In Supabase project, enable Email (magic link) provider.
+ * Login page with two tabs: Create Account and Sign In.
+ * Uses Supabase email/password authentication through AuthContext.
  */
 const oceanStyles = {
   card: {
-    maxWidth: 420,
+    maxWidth: 480,
     margin: '48px auto',
     padding: '24px',
     borderRadius: 12,
@@ -36,7 +36,31 @@ const oceanStyles = {
     cursor: 'pointer',
     fontWeight: 600,
   },
-  link: { color: '#2563EB' },
+  secondaryBtn: {
+    width: '100%',
+    padding: '12px 16px',
+    borderRadius: 8,
+    border: '1px solid #e5e7eb',
+    background: '#fff',
+    color: '#111827',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  tabs: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    marginBottom: 16,
+  },
+  tabBtn: (active) => ({
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: `1px solid ${active ? '#2563EB' : '#e5e7eb'}`,
+    background: active ? '#DBEAFE' : '#fff',
+    color: active ? '#1D4ED8' : '#111827',
+    cursor: 'pointer',
+    fontWeight: 600,
+  }),
   help: { fontSize: 12, color: '#6b7280', marginTop: 8 },
   alert: (color) => ({
     padding: '10px 12px',
@@ -51,35 +75,48 @@ const oceanStyles = {
 
 // PUBLIC_INTERFACE
 export default function Login() {
-  /** Login page using magic link email OTP via Supabase. */
-  const { user } = useAuth();
-  const [email, setEmail] = useState('');
+  /** Login page using email/password for Sign Up and Sign In. */
+  const navigate = useNavigate();
+  const { user, signUp, signIn } = useAuth();
+
+  const [activeTab, setActiveTab] = useState('signin'); // 'signin' | 'signup'
+  const [form, setForm] = useState({ email: '', password: '', fullName: '' });
   const [status, setStatus] = useState({ type: '', message: '' });
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSendMagicLink = async (e) => {
+  const onChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleSignUp = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setStatus({ type: '', message: '' });
 
     try {
-      // For CRA, no NEXT style redirect var; rely on SITE URL configured in Supabase project.
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: process.env.REACT_APP_FRONTEND_URL || window.location.origin,
-        },
+      await signUp(form.email, form.password, form.fullName || undefined);
+      // Depending on Supabase settings, confirmation may be required
+      setStatus({
+        type: 'success',
+        message:
+          'Account created. Please check your email to confirm (if required), then sign in.',
       });
-      if (error) {
-        setStatus({ type: 'error', message: error.message });
-      } else {
-        setStatus({
-          type: 'success',
-          message: 'Check your email for the magic link to sign in.',
-        });
-      }
+      setActiveTab('signin');
     } catch (err) {
-      setStatus({ type: 'error', message: err.message || 'Unable to send magic link' });
+      setStatus({ type: 'error', message: err?.message || 'Unable to create account' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSignIn = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setStatus({ type: '', message: '' });
+
+    try {
+      await signIn(form.email, form.password);
+      navigate('/dashboard');
+    } catch (err) {
+      setStatus({ type: 'error', message: err?.message || 'Failed to sign in' });
     } finally {
       setSubmitting(false);
     }
@@ -88,14 +125,12 @@ export default function Login() {
   return (
     <div style={{ padding: 24 }}>
       <div style={oceanStyles.card} aria-live="polite">
-        <h2 style={oceanStyles.title}>Sign in</h2>
-        <p style={oceanStyles.subtitle}>
-          Use your work email to receive a secure magic link.
-        </p>
+        <h2 style={oceanStyles.title}>Welcome</h2>
+        <p style={oceanStyles.subtitle}>Sign in to manage your attendance.</p>
 
         {user ? (
           <div style={oceanStyles.alert('success')}>
-            You are already signed in. You can navigate to the Dashboard.
+            You are signed in. Go to Dashboard.
           </div>
         ) : null}
 
@@ -105,34 +140,124 @@ export default function Login() {
           </div>
         ) : null}
 
-        <form onSubmit={handleSendMagicLink}>
-          <label htmlFor="email" style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>
-            Email address
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            placeholder="you@company.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={oceanStyles.input}
-          />
+        <div style={oceanStyles.tabs} role="tablist" aria-label="Authentication Tabs">
           <button
-            type="submit"
-            disabled={submitting || !email}
-            style={{
-              ...oceanStyles.button,
-              opacity: submitting || !email ? 0.7 : 1,
-            }}
+            type="button"
+            style={oceanStyles.tabBtn(activeTab === 'signin')}
+            aria-selected={activeTab === 'signin'}
+            aria-controls="signin-panel"
+            onClick={() => setActiveTab('signin')}
           >
-            {submitting ? 'Sending...' : 'Send magic link'}
+            Sign In
           </button>
-        </form>
+          <button
+            type="button"
+            style={oceanStyles.tabBtn(activeTab === 'signup')}
+            aria-selected={activeTab === 'signup'}
+            aria-controls="signup-panel"
+            onClick={() => setActiveTab('signup')}
+          >
+            Create Account
+          </button>
+        </div>
+
+        {activeTab === 'signin' ? (
+          <form id="signin-panel" onSubmit={handleSignIn}>
+            <label htmlFor="email" style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>
+              Email address
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              placeholder="you@company.com"
+              value={form.email}
+              onChange={onChange}
+              style={oceanStyles.input}
+            />
+            <label htmlFor="password" style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>
+              Password
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              placeholder="••••••••"
+              value={form.password}
+              onChange={onChange}
+              style={oceanStyles.input}
+              minLength={6}
+            />
+
+            <button
+              type="submit"
+              disabled={submitting || !form.email || !form.password}
+              style={{
+                ...oceanStyles.button,
+                opacity: submitting || !form.email || !form.password ? 0.7 : 1,
+              }}
+            >
+              {submitting ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+        ) : (
+          <form id="signup-panel" onSubmit={handleSignUp}>
+            <label htmlFor="fullName" style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>
+              Full name (optional)
+            </label>
+            <input
+              id="fullName"
+              name="fullName"
+              type="text"
+              placeholder="Jane Doe"
+              value={form.fullName}
+              onChange={onChange}
+              style={oceanStyles.input}
+            />
+            <label htmlFor="email2" style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>
+              Email address
+            </label>
+            <input
+              id="email2"
+              name="email"
+              type="email"
+              required
+              placeholder="you@company.com"
+              value={form.email}
+              onChange={onChange}
+              style={oceanStyles.input}
+            />
+            <label htmlFor="password2" style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>
+              Password
+            </label>
+            <input
+              id="password2"
+              name="password"
+              type="password"
+              required
+              placeholder="At least 6 characters"
+              value={form.password}
+              onChange={onChange}
+              style={oceanStyles.input}
+              minLength={6}
+            />
+            <button
+              type="submit"
+              disabled={submitting || !form.email || !form.password}
+              style={{
+                ...oceanStyles.button,
+                opacity: submitting || !form.email || !form.password ? 0.7 : 1,
+              }}
+            >
+              {submitting ? 'Creating...' : 'Create Account'}
+            </button>
+          </form>
+        )}
 
         <p style={oceanStyles.help}>
-          Make sure to check your spam folder if you don’t see the email. Contact admin if problems
-          persist.
+          Email/Password auth requires the Email provider enabled in Supabase.
         </p>
       </div>
     </div>
