@@ -36,7 +36,7 @@ Important behavior notes:
 - If confirmation is ON, `signUp` returns `data.session = null` and no user is signed in until the email is confirmed.
 - The UI will show a friendly message asking users to check their email and then sign in.
 
-## Attendance Table (SQL)
+## Attendance Table (SQL + RLS)
 
 ```sql
 create extension if not exists "uuid-ossp";
@@ -67,6 +67,25 @@ begin
     create policy "Individuals can insert own attendance"
       on public.attendance for insert
       with check (auth.uid() = user_id);
+  end if;
+end $$;
+```
+
+Optional: grant admin-level read via profiles.role:
+```sql
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'attendance' and policyname = 'Admins can view all attendance'
+  ) then
+    create policy "Admins can view all attendance"
+      on public.attendance for select
+      using (
+        exists(
+          select 1 from public.profiles p
+          where p.id = auth.uid() and p.role = 'admin'
+        )
+      );
   end if;
 end $$;
 ```
@@ -116,7 +135,7 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
--- 4) RLS + Policy
+-- 4) RLS + Policies
 alter table public.profiles enable row level security;
 
 do $$
@@ -127,6 +146,13 @@ begin
     create policy "Users can view own profile" on public.profiles
       for select using (auth.uid() = id);
   end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'Users can update own profile'
+  ) then
+    create policy "Users can update own profile" on public.profiles
+      for update using (auth.uid() = id);
+  end if;
 end $$;
 ```
 
@@ -134,7 +160,7 @@ Notes:
 - The function uses `new.raw_user_meta_data->>'full_name'` to populate `full_name` from sign-up metadata when available.
 - The default `role` is set to `employee` to align with app expectations.
 - The function is `SECURITY DEFINER` so it can insert into `public.profiles`. Ensure its owner has the right privileges (e.g., `postgres`).
-- Add additional policies as needed (e.g., allow users to update their own profile).
+- Add additional policies as needed.
 
 ## Troubleshooting
 

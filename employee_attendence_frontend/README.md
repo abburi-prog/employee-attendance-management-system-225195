@@ -1,82 +1,63 @@
-# Lightweight React Template for KAVIA
+# Employee Attendance Frontend (React + Supabase)
 
-This project provides a minimal React template with a clean, modern UI and minimal dependencies.
+Modern React application for managing and tracking employee attendance.
+Styled with Tailwind (Ocean Professional theme), using Supabase for auth and storage.
 
 ## Features
 
-- **Lightweight**: No heavy UI frameworks - uses only vanilla CSS and React
-- **Modern UI**: Clean, responsive design with KAVIA brand styling
-- **Fast**: Minimal dependencies for quick loading times
-- **Simple**: Easy to understand and modify
+- Email/Password authentication (Supabase)
+- Auth context with signUp, signIn, signOut, profile fetch
+- Pages: Login, Dashboard, Admin
+- Components: ClockInOut, AttendanceTable, AdminDashboard, NavBar, ProtectedRoute
+- Routing via react-router-dom v6
+- TailwindCSS with Ocean Professional theme
+- Utilities for date/time formatting and error handling
 
-## Getting Started
+## Prerequisites
 
-In the project directory, you can run:
+- Node.js 18+
+- Supabase project with Email provider enabled
 
-### `npm start`
+## Environment
 
-Runs the app in development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
-
-### `npm test`
-
-Launches the test runner in interactive watch mode.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-## Customization
-
-### Colors
-
-The main brand colors are defined as CSS variables in `src/App.css`:
-
-```css
-:root {
-  --kavia-orange: #E87A41;
-  --kavia-dark: #1A1A1A;
-  --text-color: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --border-color: rgba(255, 255, 255, 0.1);
-}
+1. Copy .env.example to .env and set:
+```
+REACT_APP_SUPABASE_URL=your-url
+REACT_APP_SUPABASE_KEY=your-anon-key
+REACT_APP_FRONTEND_URL=http://localhost:3000
 ```
 
-### Components
+2. Supabase SQL setup:
+- Open `SUPABASE.md` and run the SQL in your Supabase SQL Editor to create:
+  - attendance table + RLS policies
+  - profiles table + trigger/function + RLS policies
 
-This template uses pure HTML/CSS components instead of a UI framework. You can find component styles in `src/App.css`. 
+## Install and Run
 
-Common components include:
-- Buttons (`.btn`, `.btn-large`)
-- Container (`.container`)
-- Navigation (`.navbar`)
-- Typography (`.title`, `.subtitle`, `.description`)
+```
+npm install
+npm start
+```
 
-## Learn More
+App runs at http://localhost:3000
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Build
 
-### Code Splitting
+```
+npm run build
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Project Structure
 
-### Analyzing the Bundle Size
+- src/context/AuthContext.jsx: Auth state, signUp, signIn, signOut, profile load
+- src/supabase/client.js: Supabase client reading REACT_APP_SUPABASE_URL/KEY
+- src/pages: Login, Dashboard, AdminPage
+- src/components: NavBar, ProtectedRoute, ClockInOut, AttendanceTable, AdminDashboard
+- src/utils: datetime.js, errors.js
+- tailwind.config.js, postcss.config.js, src/index.css: Tailwind and theme setup
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Notes
 
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- Do not hardcode Supabase credentials. Use env vars.
+- Admin page requires profile.role === 'admin' per RLS or manual role setting.
+- For email confirmation behavior see SUPABASE.md.
