@@ -46,7 +46,10 @@ export default function ClockInOut() {
   const [error, setError] = useState('');
 
   const fetchLast = async () => {
-    if (!user) return;
+    if (!user) {
+      setLastStatus(null);
+      return;
+    }
     const { data, error: err } = await supabase
       .from('attendance')
       .select('status, created_at')
@@ -86,12 +89,27 @@ export default function ClockInOut() {
     }
   };
 
-  const inDisabled = working || lastStatus === 'in';
-  const outDisabled = working || lastStatus === 'out';
+  const inDisabled = !user || working || lastStatus === 'in';
+  const outDisabled = !user || working || lastStatus === 'out';
 
   return (
     <div style={cardStyle}>
       <h3 style={{ marginTop: 0, color: '#111827' }}>Clock In / Out</h3>
+      {!user ? (
+        <div
+          style={{
+            background: '#FFF7ED',
+            border: '1px solid #FED7AA',
+            color: '#7C2D12',
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 12,
+            fontSize: 13,
+          }}
+        >
+          Sign in to enable clock-in and attendance recording.
+        </div>
+      ) : null}
       {error ? (
         <div
           style={{

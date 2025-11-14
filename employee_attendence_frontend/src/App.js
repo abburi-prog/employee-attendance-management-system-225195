@@ -2,11 +2,19 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AdminPage from './pages/AdminPage';
-import ProtectedRoute from './components/ProtectedRoute';
 import NavBar from './components/NavBar';
+
+/**
+ * NoOpProtected is a no-op wrapper that simply renders children.
+ * It replaces the previous ProtectedRoute to make routes public while preserving structure.
+ */
+// PUBLIC_INTERFACE
+function NoOpProtected({ children }) {
+  /** Public wrapper that renders its children without auth checks. */
+  return children;
+}
 
 // PUBLIC_INTERFACE
 function AppShell() {
@@ -28,22 +36,18 @@ function AppShell() {
         <NavBar theme={theme} onToggle={toggleTheme} />
         <main style={{ padding: 16 }}>
           <Routes>
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
+            {/* Default to public dashboard */}
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            {/* Public dashboard */}
+            <Route path="/dashboard" element={<Dashboard />} />
+            {/* Admin remains routable; currently public via NoOpProtected.
+                If admin auth is reintroduced later, swap NoOpProtected with a real guard. */}
             <Route
               path="/admin"
               element={
-                <ProtectedRoute>
+                <NoOpProtected>
                   <AdminPage />
-                </ProtectedRoute>
+                </NoOpProtected>
               }
             />
             <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
@@ -56,7 +60,7 @@ function AppShell() {
 
 // PUBLIC_INTERFACE
 function App() {
-  /** Root component wrapped with AuthProvider to provide auth state. */
+  /** Root component wrapped with AuthProvider to keep auth optional for future use. */
   return (
     <AuthProvider>
       <AppShell />

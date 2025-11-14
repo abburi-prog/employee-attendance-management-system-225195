@@ -1,31 +1,38 @@
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React from 'react';
 import AdminDashboard from '../components/AdminDashboard';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * Admin route. Access is allowed only when profile.role === 'admin'.
- * Otherwise redirect to Dashboard or show a message.
+ * Admin route is public-safe now. If a user is not authenticated or not an admin,
+ * show a limited notice. When authenticated and admin, show the admin dashboard.
  */
 // PUBLIC_INTERFACE
 export default function AdminPage() {
   const { user, profile, loading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate('/login');
-      } else if (profile && profile.role !== 'admin') {
-        // Not an admin -> redirect to dashboard
-        navigate('/dashboard');
-      }
-    }
-  }, [user, profile, loading, navigate]);
 
   if (loading) return <div style={{ padding: 24 }}>Loading...</div>;
 
-  if (!user) return null; // already redirected
+  if (!user) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div
+          style={{
+            maxWidth: 900,
+            margin: '0 auto',
+            background: '#FFF7ED',
+            border: '1px solid #FED7AA',
+            color: '#7C2D12',
+            padding: 12,
+            borderRadius: 8,
+            fontSize: 14,
+          }}
+        >
+          Admin features require authentication and proper permissions.
+        </div>
+      </div>
+    );
+  }
+
   if (profile && profile.role !== 'admin') {
     return <div style={{ padding: 24 }}>You do not have permission to view this page.</div>;
   }
