@@ -116,7 +116,8 @@ export default function Login() {
       await signIn(form.email, form.password);
       navigate('/dashboard');
     } catch (err) {
-      setStatus({ type: 'error', message: err?.message || 'Failed to sign in' });
+      const code = err?.code ? ` (${err.code})` : '';
+      setStatus({ type: 'error', message: (err?.message || 'Failed to sign in') + code });
     } finally {
       setSubmitting(false);
     }

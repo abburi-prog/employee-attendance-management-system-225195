@@ -133,14 +133,41 @@ export function AuthProvider({ children }) {
   const signIn = async (email, password) => {
     /** Sign in using email/password. */
     setError(null);
+
+    // Attempt sign-in and capture detailed error payload
     const { data, error: iErr } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+
     if (iErr) {
+      // eslint-disable-next-line no-console
+      console.error('[Supabase:signInWithPassword] error', {
+        code: iErr?.code,
+        message: iErr?.message,
+      });
+
+      // Try to fetch current user to confirm if email is unconfirmed vs bad credentials
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        // eslint-disable-next-line no-console
+        console.info('[Supabase:getUser after failed sign-in] userPresent=', Boolean(userData?.user));
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.info('[Supabase:getUser after failed sign-in] threw');
+      }
+
       setError(iErr);
       throw iErr;
     }
+
+    // On success, explicitly log presence of session and user (no sensitive data)
+    // eslint-disable-next-line no-console
+    console.info('[Supabase:signInWithPassword] success', {
+      hasSession: Boolean(data?.session),
+      hasUser: Boolean(data?.user),
+    });
+
     return data;
   };
 

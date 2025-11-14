@@ -12,29 +12,36 @@ Copy `.env.example` to `.env` and set the above values. Do not commit the `.env`
 Currently present envs in container (for reference): REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_KEY, REACT_APP_API_BASE, REACT_APP_BACKEND_URL, REACT_APP_FRONTEND_URL, REACT_APP_WS_URL, REACT_APP_NODE_ENV, REACT_APP_NEXT_TELEMETRY_DISABLED, REACT_APP_ENABLE_SOURCE_MAPS, REACT_APP_PORT, REACT_APP_TRUST_PROXY, REACT_APP_LOG_LEVEL, REACT_APP_HEALTHCHECK_PATH, REACT_APP_FEATURE_FLAGS, REACT_APP_EXPERIMENTS_ENABLED
 
 ## Auth
-This app uses email/password authentication.
+This app uses Supabase JS v2 and email/password authentication only.
 
 - Enable Email provider in Supabase Dashboard:
   - Go to Authentication → Providers → Email
   - Ensure "Enable email signups" and "Password sign in" are enabled
   - Configure "Confirm email" as you prefer:
-    - If ON: Users must confirm via email link before they can sign in. Until then, sign-in will fail with "Email not confirmed".
+    - If ON: Users must confirm via email link before they can sign in. Until then, sign-in may fail with code like `email_not_confirmed` and message "Email not confirmed".
     - If OFF: Users can sign in immediately after sign-up.
 
-- Redirect after email confirmation:
+- URL Configuration and Redirects:
   - In Supabase Dashboard → Authentication → URL Configuration:
     - Set the "Site URL" to your frontend (e.g., http://localhost:3000 during development).
-    - Optionally, specify additional redirect URLs if needed.
-  - The app can also pass a custom redirect via `options.emailRedirectTo` during `signUp` (not required if Site URL is sufficient).
+    - Add any dev URLs to Additional Redirect URLs if needed.
+  - The app supports an optional `REACT_APP_FRONTEND_URL`. When set, we pass it as `emailRedirectTo` during `signUp`. Otherwise, the Supabase "Site URL" is used.
+  - Ensure there is no mismatch between the Dashboard "Site URL" and your actual dev URL (including port); otherwise confirmation links may not return to your app.
 
-- The frontend calls:
-  - `supabase.auth.signUp({ email, password, options: { data: { full_name } } })`
+- The frontend (v2) calls:
+  - `supabase.auth.signUp({ email, password, options: { data: { full_name }, emailRedirectTo?: REACT_APP_FRONTEND_URL } })`
   - `supabase.auth.signInWithPassword({ email, password })`
   - `supabase.auth.signOut()`
+  - `supabase.auth.getUser()` (used in diagnostics)
 
 Important behavior notes:
-- If confirmation is ON, `signUp` returns `data.session = null` and no user is signed in until the email is confirmed.
-- The UI will show a friendly message asking users to check their email and then sign in.
+- If email confirmation is ON, `signUp` returns `data.session = null` and no user is signed in until the email is confirmed.
+- After clicking the email link, the browser should redirect back to your frontend (Site URL or `emailRedirectTo`) with a session established.
+- We log minimal diagnostics at runtime:
+  - `[Supabase:init] URL present=... KEY present=... Host=...`
+  - `[Supabase:signInWithPassword] error { code, message }`
+  - `getUser` presence after a failed sign-in
+- These logs help confirm env injection and clarify exact errors without exposing secrets.
 
 ## Attendance Table (SQL + RLS)
 
@@ -166,17 +173,24 @@ Notes:
 
 - If you see errors like `PGRST202 Could not find the function public.run_sql(query)`, run the SQL directly in the Supabase SQL Editor as above. The app does not require `run_sql` to function; it's only used for automation.
 - Ensure RLS policies are present; otherwise, the client may not be able to read profiles/attendance.
-- If sign-in fails with "Email not confirmed", either:
-  - Confirm the user's email by clicking the link sent by Supabase (required when email confirmation is enabled), or
-  - Disable "Confirm email" in Supabase Authentication settings for testing.
-- If login requests fail immediately:
-  - Verify `.env` has `REACT_APP_SUPABASE_URL` and `REACT_APP_SUPABASE_KEY` set and the dev server has been restarted.
-  - Open browser devtools → Network and Console to see error messages from `supabase.auth.signInWithPassword`.
-  - Check Supabase Dashboard → Authentication → URL Configuration:
-    - Site URL should match `http://localhost:3000` (or your deployed URL) during development to avoid redirect/CORS issues.
-    - Add your dev URL to Additional Redirect URLs if needed.
-  - If you require email confirmation, ensure `REACT_APP_FRONTEND_URL` is set (e.g., `http://localhost:3000`) to allow the confirmation link to return to this app. The frontend passes `emailRedirectTo` when set.
-  - CORS: Supabase automatically handles CORS for the API, but incorrect Site URL/redirect configuration can appear as blocked flows in the browser.
+
+- Diagnosing login failures:
+  1) Open DevTools Console:
+     - Look for `[Supabase:init] URL present=... KEY present=... Host=...`. If either is false, the env vars were not injected; update `.env` and restart the dev server.
+  2) Attempt to sign in with test credentials:
+     - If it fails, the console will show `[Supabase:signInWithPassword] error { code, message }`.
+     - Common codes:
+       - `email_not_confirmed`: confirm the email or disable "Confirm email" for testing.
+       - `invalid_credentials`: check the email/password or reset the password.
+       - `over_email_send_rate_limit`: wait before requesting another email.
+  3) Check Supabase URL Configuration:
+     - Confirm the Dashboard "Site URL" matches your actual frontend URL and port (e.g., http://localhost:3000).
+     - If using a different dev port, add it to Additional Redirect URLs.
+  4) Optional redirect override:
+     - If `REACT_APP_FRONTEND_URL` is set, we pass `emailRedirectTo` in signUp. If you change ports, update this env var and restart the dev server.
+
+- CORS:
+  Supabase handles CORS for the API; most auth-related CORS-like issues stem from an incorrect "Site URL" or missing allowed redirects.
 
 ## Admin Access Considerations
 
