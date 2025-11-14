@@ -62,22 +62,10 @@ export default function Login() {
     setError('');
 
     try {
-      // Use Supabase v2 signInWithPassword
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Route sign-in through AuthContext for consistent diagnostics and state updates
+      await signIn(email, password);
 
-      // Alternative through AuthContext that also logs diagnostics
-      // await signIn(email, password);
-
-      if (signInError) {
-        setError(signInError.message || 'Unable to sign in.');
-        setSubmitting(false);
-        return;
-      }
-
-      // On success: redirect to dashboard
+      // On success: redirect to dashboard as the default post-login landing page
       navigate('/dashboard', { replace: true });
     } catch (e2) {
       setError(e2?.message || 'Unexpected error during sign in.');

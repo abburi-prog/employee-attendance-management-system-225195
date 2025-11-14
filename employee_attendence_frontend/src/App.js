@@ -117,7 +117,8 @@ function AppShell() {
 
             {/* Catch-all:
                 - If unauthenticated → redirect to /login
-                - If authenticated (edge), redirect to /dashboard so no route renders by default */}
+                - If authenticated (edge), redirect to /dashboard so no route renders by default
+                - This enforces /dashboard as the post-login default for unknown paths */}
             <Route
               path="*"
               element={
