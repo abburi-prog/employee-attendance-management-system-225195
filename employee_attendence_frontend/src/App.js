@@ -14,6 +14,7 @@ import ApplyLeave from "./pages/ApplyLeave";
 import MyLeaveHistory from "./pages/MyLeaveHistory";
 import AdminLeaveDashboard from "./pages/AdminLeaveDashboard";
 import LeaveBalance from "./pages/LeaveBalance";
+import Login from "./pages/Login";
 
 /**
  * AppShell composes providers and routes. All routes are public; Admin page
@@ -37,6 +38,7 @@ function AppShell() {
               <Route path="/my-leaves" element={<MyLeaveHistory />} />
               <Route path="/admin/leaves" element={<AdminLeaveDashboard />} />
               <Route path="/leave-balance" element={<LeaveBalance />} />
+              <Route path="/login" element={<Login />} />
               <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
             </Routes>
           </Layout>
