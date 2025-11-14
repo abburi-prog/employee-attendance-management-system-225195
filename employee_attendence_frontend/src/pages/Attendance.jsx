@@ -36,10 +36,15 @@ export default function AttendancePage() {
         actions={
           <div className="flex gap-2">
             <Button onClick={onClockIn} disabled={loading || today.state === 'in'} ariaLabel="Clock In">
-              Clock In
+              {loading && today.state !== 'in' ? 'Working...' : 'Clock In'}
             </Button>
-            <Button variant="secondary" onClick={onClockOut} disabled={loading || today.state !== 'in'} ariaLabel="Clock Out">
-              Clock Out
+            <Button
+              variant="secondary"
+              onClick={onClockOut}
+              disabled={loading || today.state !== 'in'}
+              ariaLabel="Clock Out"
+            >
+              {loading && today.state === 'in' ? 'Working...' : 'Clock Out'}
             </Button>
           </div>
         }

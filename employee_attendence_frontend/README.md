@@ -53,9 +53,21 @@ Copy .env.example to .env and set as needed:
 REACT_APP_SUPABASE_URL=
 REACT_APP_SUPABASE_KEY=
 REACT_APP_FRONTEND_URL=http://localhost:3000
-REACT_APP_API_BASE=   # if empty → mock mode
+REACT_APP_API_BASE=   # if empty → mock mode; if set → API mode (e.g., http://localhost:4000)
 REACT_APP_FEATURE_FLAGS={}
 ```
+
+Notes:
+- Attendance service logs at init: `[AttendanceService:init] mode=MOCK|API base=...`.
+- In API mode, the backend must expose:
+  - POST /attendance/clock-in  body: { userId }
+  - POST /attendance/clock-out body: { userId }
+  - GET  /attendance/today-status?userId=...
+  - GET  /attendance/history?userId=...&page=1&pageSize=10&start=YYYY-MM-DD&end=YYYY-MM-DD
+  - GET  /admin/overview?date=YYYY-MM-DD
+  - GET  /admin/attendance?... (filters)
+  - GET  /admin/employees?... (filters)
+- If API is unavailable or returns an error, user-facing toasts show the error. Keep `REACT_APP_API_BASE` unset to run in mock mode.
 
 For Supabase setup details see SUPABASE.md.
 

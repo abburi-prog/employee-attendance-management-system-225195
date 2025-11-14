@@ -64,16 +64,23 @@ export default function useAttendance({ userId = 'u-2' } = {}) {
       if (res?.ok) {
         setToday(res.status);
         toast.show({ type: 'success', message: 'Clocked in' });
-        refreshHistory();
+        await refreshHistory();
+        await refreshToday();
+        // eslint-disable-next-line no-console
+        console.info('[useAttendance] clock-in success', res.status);
       } else {
         toast.show({ type: 'error', message: res?.error || 'Unable to clock in' });
+        // eslint-disable-next-line no-console
+        console.warn('[useAttendance] clock-in failed', res);
       }
     } catch (e) {
       toast.show({ type: 'error', message: e?.message || 'Unable to clock in' });
+      // eslint-disable-next-line no-console
+      console.warn('[useAttendance] clock-in error', e);
     } finally {
       setLoading(false);
     }
-  }, [toast, userId, refreshHistory]);
+  }, [toast, userId, refreshHistory, refreshToday]);
 
   const onClockOut = useCallback(async () => {
     setLoading(true);
@@ -82,16 +89,23 @@ export default function useAttendance({ userId = 'u-2' } = {}) {
       if (res?.ok) {
         setToday(res.status);
         toast.show({ type: 'success', message: 'Clocked out' });
-        refreshHistory();
+        await refreshHistory();
+        await refreshToday();
+        // eslint-disable-next-line no-console
+        console.info('[useAttendance] clock-out success', res.status);
       } else {
         toast.show({ type: 'error', message: res?.error || 'Unable to clock out' });
+        // eslint-disable-next-line no-console
+        console.warn('[useAttendance] clock-out failed', res);
       }
     } catch (e) {
       toast.show({ type: 'error', message: e?.message || 'Unable to clock out' });
+      // eslint-disable-next-line no-console
+      console.warn('[useAttendance] clock-out error', e);
     } finally {
       setLoading(false);
     }
-  }, [toast, userId, refreshHistory]);
+  }, [toast, userId, refreshHistory, refreshToday]);
 
   const filtered = useMemo(() => history, [history]);
 

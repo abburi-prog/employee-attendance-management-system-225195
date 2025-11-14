@@ -2,6 +2,12 @@ const API_BASE = process.env.REACT_APP_API_BASE || '';
 // Single toggle for mock mode. If API_BASE is not set, default to mock mode.
 const MOCK_MODE = !API_BASE;
 
+// Minimal runtime diagnostics to clarify which mode is active and where API points to.
+// eslint-disable-next-line no-console
+console.info(
+  `[AttendanceService:init] mode=${MOCK_MODE ? 'MOCK' : 'API'} base=${API_BASE || '(unset)'}`
+);
+
 /**
  * In-memory storage for mock data. Not persisted across reloads.
  */
@@ -43,18 +49,27 @@ function calcHours(checkIn, checkOut) {
  * Fetch helper for API mode.
  */
 async function apiFetch(path, options) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Request failed: ${res.status}`);
+  if (!API_BASE) {
+    throw new Error('API base URL is not configured');
   }
   try {
-    return await res.json();
-  } catch {
-    return null;
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `Request failed: ${res.status}`);
+    }
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[AttendanceService:apiFetch] Falling back to mock due to error:', e?.message);
+    throw e;
   }
 }
 
@@ -72,7 +87,13 @@ export async function getTodayStatus(userId = 'u-2') {
     if (row.checkIn && row.checkOut) return { state: 'out', checkInAt: row.checkIn, checkOutAt: row.checkOut };
     return { state: 'none' };
   }
-  return apiFetch(`/attendance/today-status?userId=${encodeURIComponent(userId)}`);
+  try {
+    return await apiFetch(`/attendance/today-status?userId=${encodeURIComponent(userId)}`);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[AttendanceService:getTodayStatus] API error:', e?.message);
+    throw e;
+  }
 }
 
 /**
@@ -87,6 +108,8 @@ export async function clockIn(userId = 'u-2') {
     if (!row) {
       row = { id: `a-${seq++}`, userId, date: d, checkIn: timeHm(), checkOut: null };
       mockDb.attendance.unshift(row);
+      // eslint-disable-next-line no-console
+      console.info('[AttendanceService:clockIn:mock] ok user=', userId, 'time=', row.checkIn);
       return { ok: true, status: { state: 'in', checkInAt: row.checkIn } };
     }
     if (row.checkIn && !row.checkOut) {
@@ -95,9 +118,24 @@ export async function clockIn(userId = 'u-2') {
     // Has checkOut for today, create new entry
     row = { id: `a-${seq++}`, userId, date: d, checkIn: timeHm(), checkOut: null };
     mockDb.attendance.unshift(row);
+    // eslint-disable-next-line no-console
+    console.info('[AttendanceService:clockIn:mock:new-session] ok user=', userId, 'time=', row.checkIn);
     return { ok: true, status: { state: 'in', checkInAt: row.checkIn } };
   }
-  return apiFetch(`/attendance/clock-in`, { method: 'POST', body: JSON.stringify({ userId }) });
+  try {
+    const data = await apiFetch(`/attendance/clock-in`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    // Expected data normalization: accept backend {state,checkInAt,checkOutAt} or wrapped
+    const status = data?.status || data || null;
+    if (!status) {
+      return { ok: false, error: 'Invalid response from server' };
+    }
+    return { ok: true, status };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Failed to clock in' };
+  }
 }
 
 /**
@@ -112,9 +150,23 @@ export async function clockOut(userId = 'u-2') {
     if (!row || !row.checkIn) return { ok: false, error: 'Not clocked in yet.' };
     if (row.checkOut) return { ok: false, error: 'Already clocked out.' };
     row.checkOut = timeHm();
+    // eslint-disable-next-line no-console
+    console.info('[AttendanceService:clockOut:mock] ok user=', userId, 'time=', row.checkOut);
     return { ok: true, status: { state: 'out', checkInAt: row.checkIn, checkOutAt: row.checkOut } };
   }
-  return apiFetch(`/attendance/clock-out`, { method: 'POST', body: JSON.stringify({ userId }) });
+  try {
+    const data = await apiFetch(`/attendance/clock-out`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    const status = data?.status || data || null;
+    if (!status) {
+      return { ok: false, error: 'Invalid response from server' };
+    }
+    return { ok: true, status };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Failed to clock out' };
+  }
 }
 
 /**
