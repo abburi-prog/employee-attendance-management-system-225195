@@ -1,9 +1,64 @@
 import React, { useState, useEffect } from 'react';
-import logo from './logo.svg';
 import './App.css';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import AdminPage from './pages/AdminPage';
+
+// Simple top nav with theme toggle and minimal links
+function NavBar({ theme, onToggle }) {
+  const { user, signOut } = useAuth();
+  return (
+    <nav
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: '12px 16px',
+        background: '#ffffff',
+        borderBottom: '1px solid #e5e7eb',
+      }}
+    >
+      <div style={{ fontWeight: 700, color: '#2563EB' }}>Attendance</div>
+      <Link to="/login" style={{ color: '#111827', textDecoration: 'none' }}>
+        Login
+      </Link>
+      <Link to="/dashboard" style={{ color: '#111827', textDecoration: 'none' }}>
+        Dashboard
+      </Link>
+      <Link to="/admin" style={{ color: '#111827', textDecoration: 'none' }}>
+        Admin
+      </Link>
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        {user ? (
+          <button
+            onClick={signOut}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid #e5e7eb',
+              background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            Sign out
+          </button>
+        ) : null}
+        <button
+          className="theme-toggle"
+          onClick={onToggle}
+          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+        >
+          {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+        </button>
+      </div>
+    </nav>
+  );
+}
 
 // PUBLIC_INTERFACE
-function App() {
+function AppShell() {
   const [theme, setTheme] = useState('light');
 
   // Effect to apply theme to document element
@@ -13,36 +68,34 @@ function App() {
 
   // PUBLIC_INTERFACE
   const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+    setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <button 
-          className="theme-toggle" 
-          onClick={toggleTheme}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-        >
-          {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
-        </button>
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <p>
-          Current theme: <strong>{theme}</strong>
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <BrowserRouter>
+      <div className="App" style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
+        <NavBar theme={theme} onToggle={toggleTheme} />
+        <main style={{ padding: 16 }}>
+          <Routes>
+            <Route path="/" element={<Login />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
+          </Routes>
+        </main>
+      </div>
+    </BrowserRouter>
+  );
+}
+
+// PUBLIC_INTERFACE
+function App() {
+  /** Root component wrapped with AuthProvider to provide auth state. */
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
 
