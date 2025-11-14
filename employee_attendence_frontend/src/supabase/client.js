@@ -8,9 +8,12 @@ import { createClient } from '@supabase/supabase-js';
  *
  * NOTE: Do not hardcode credentials. Set env vars in the project's .env file.
  */
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
+const supabaseKey = process.env.REACT_APP_SUPABASE_KEY || '';
 
+/**
+ * Only initialize once per bundle. The module scope export guarantees singleton behavior in CRA.
+ */
 // Basic runtime checks to help local development; avoid throwing to not break CI builds
 if (!supabaseUrl || !supabaseKey) {
   // eslint-disable-next-line no-console
@@ -19,7 +22,7 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseKey || '');
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
 // PUBLIC_INTERFACE
 export function getSupabase() {

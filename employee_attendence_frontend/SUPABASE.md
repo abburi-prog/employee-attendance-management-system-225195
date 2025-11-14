@@ -5,6 +5,7 @@ This frontend uses Supabase for auth and attendance storage.
 ## Environment Variables
 - REACT_APP_SUPABASE_URL
 - REACT_APP_SUPABASE_KEY
+- (Optional) REACT_APP_FRONTEND_URL for email confirmation redirect
 
 Copy `.env.example` to `.env` and set the above values. Do not commit the `.env` file.
 
@@ -16,12 +17,24 @@ This app uses email/password authentication.
 - Enable Email provider in Supabase Dashboard:
   - Go to Authentication → Providers → Email
   - Ensure "Enable email signups" and "Password sign in" are enabled
-  - Configure email confirmation as you prefer (if enabled, users must confirm before signing in)
+  - Configure "Confirm email" as you prefer:
+    - If ON: Users must confirm via email link before they can sign in. Until then, sign-in will fail with "Email not confirmed".
+    - If OFF: Users can sign in immediately after sign-up.
+
+- Redirect after email confirmation:
+  - In Supabase Dashboard → Authentication → URL Configuration:
+    - Set the "Site URL" to your frontend (e.g., http://localhost:3000 during development).
+    - Optionally, specify additional redirect URLs if needed.
+  - The app can also pass a custom redirect via `options.emailRedirectTo` during `signUp` (not required if Site URL is sufficient).
 
 - The frontend calls:
   - `supabase.auth.signUp({ email, password, options: { data: { full_name } } })`
   - `supabase.auth.signInWithPassword({ email, password })`
   - `supabase.auth.signOut()`
+
+Important behavior notes:
+- If confirmation is ON, `signUp` returns `data.session = null` and no user is signed in until the email is confirmed.
+- The UI will show a friendly message asking users to check their email and then sign in.
 
 ## Attendance Table (SQL)
 
@@ -127,6 +140,9 @@ Notes:
 
 - If you see errors like `PGRST202 Could not find the function public.run_sql(query)`, run the SQL directly in the Supabase SQL Editor as above. The app does not require `run_sql` to function; it's only used for automation.
 - Ensure RLS policies are present; otherwise, the client may not be able to read profiles/attendance.
+- If sign-in fails with "Email not confirmed", either:
+  - Confirm the user's email by clicking the link sent by Supabase (required when email confirmation is enabled), or
+  - Disable "Confirm email" in Supabase Authentication settings for testing.
 
 ## Admin Access Considerations
 
