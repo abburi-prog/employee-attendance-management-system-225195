@@ -33,7 +33,9 @@ export default function Dashboard() {
     try {
       const { data, error } = await getMyLeaves();
       if (error) setErrorLeaves(error.message || 'Failed to load recent leaves');
-      setRecent((data || []).slice(0, 5));
+      // When unauthenticated, data === null by contract → show empty list gracefully
+      const safe = Array.isArray(data) ? data : [];
+      setRecent(safe.slice(0, 5));
     } catch (e) {
       setErrorLeaves(e?.message || 'Failed to load recent leaves');
     } finally {

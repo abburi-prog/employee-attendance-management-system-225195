@@ -2,14 +2,29 @@ import { useEffect, useState } from "react";
 import { getMyLeaves } from "../api/leaveApi";
 
 export default function MyLeaveHistory() {
-  const [leaves, setLeaves] = useState([]);
+  const [leaves, setLeaves] = useState(undefined); // undefined=loading, []=loaded, null=unauth
 
   useEffect(() => {
+    let mounted = true;
     getMyLeaves().then(({ data, error }) => {
+      if (!mounted) return;
       if (error) console.error(error);
-      setLeaves(data || []);
+      if (Array.isArray(data)) setLeaves(data);
+      else setLeaves([]); // unauthenticated or null → empty list
+    }).catch(() => {
+      if (mounted) setLeaves([]);
     });
+    return () => { mounted = false; };
   }, []);
+
+  if (leaves === undefined) {
+    return (
+      <div className="p-6 max-w-3xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">My Leave History</h1>
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
