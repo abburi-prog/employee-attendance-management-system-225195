@@ -90,15 +90,17 @@ export default function ApplyLeave({ onSubmitted }) {
         return;
       }
 
-      const total_days = computeTotalDays(form.start_date, form.end_date);
-      const payload = {
-        ...form,
-        total_days,
+      // Build payload without total_days so DB can compute it (GENERATED ALWAYS or trigger)
+      // Only include allowed fields: user_id, leave_type (if present), start_date, end_date, reason
+      const basePayload = {
         user_id: user.id,
-        status: "pending",
+        start_date: form.start_date,
+        end_date: form.end_date,
       };
+      if (form.leave_type) basePayload.leave_type = form.leave_type;
+      if (form.reason) basePayload.reason = form.reason;
 
-      const { error } = await applyLeave(payload);
+      const { error } = await applyLeave(basePayload);
       if (error) {
         const msg = error?.message || "Failed to submit leave request.";
         setMessage({ type: "error", text: msg });
