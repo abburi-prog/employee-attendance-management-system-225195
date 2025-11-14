@@ -17,28 +17,20 @@ import LeaveBalance from "./pages/LeaveBalance";
 import Login from "./pages/Login";
 
 /**
- * Routing contract:
+ * Routing contract (temporary diagnostic mode):
  * - "/" → redirects to "/login"
- * - "/login" is public (not wrapped by app Layout)
- * - All other routes are protected by ProtectedRoute and then rendered inside Layout
- * - Catch-all "*" redirects unauthenticated users to "/login" and authenticated users to "/dashboard"
+ * - "/login" is public (standalone, not wrapped by Layout)
+ * - Protected routes: /dashboard, /attendance, /apply-leave, /my-leaves, /leave-balance, /admin/leaves, /admin, /settings, /not-authorized
+ * - No catch-all ("*") route to avoid unexpected redirects during diagnosis
  */
 
 /**
- * ProtectedRoute: robust auth guard for protected routes.
- * It checks AuthContext for a user and redirects unauthenticated users to /login.
- * While auth state initializes, it shows a lightweight loading placeholder.
- */
-/**
- * ProtectedRoute enforces authentication without showing any loading UI.
- * While auth is initializing, we render null (no spinner) and let routing resolve
- * once state updates. If unauthenticated, we Navigate to /login.
+ * ProtectedRoute: guards authenticated areas; unauthenticated users go to /login.
  */
 function ProtectedRoute() {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // During auth initialization, render a minimal placeholder to avoid a blank screen.
   if (loading) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
@@ -54,11 +46,7 @@ function ProtectedRoute() {
 }
 
 /**
- * PublicOnlyRoute ensures authenticated users don't see the login page.
- * If authenticated, it redirects to /dashboard.
- */
-/**
- * PublicOnlyRoute hides its content when authenticated and never shows loaders.
+ * PublicOnlyRoute: prevents authenticated users from viewing public-only pages (e.g., /login).
  */
 function PublicOnlyRoute() {
   const { user, loading } = useAuth();
@@ -76,12 +64,8 @@ function PublicOnlyRoute() {
 }
 
 /**
- * AppShell composes providers and routes.
- * Rules:
- *  - "/" redirects to "/login"
- *  - "/login" is public
- *  - All other app routes are protected under <ProtectedRoute />
- *  - Catch-all (*) redirects unauthenticated users to "/login"
+ * AppShell composes providers and routes per the diagnostic routing rules above.
+ * Note: Catch-all routes are intentionally disabled.
  */
 // PUBLIC_INTERFACE
 function AppShell() {
@@ -90,15 +74,15 @@ function AppShell() {
       <ThemeProvider>
         <ToastProvider>
           <Routes>
-            {/* Root always redirects to /login */}
+            {/* Force "/" to redirect to "/login" */}
             <Route path="/" element={<Navigate to="/login" replace />} />
 
-            {/* Public routes: render without the main app Layout */}
+            {/* Public route: Login is standalone (no Layout) */}
             <Route element={<PublicOnlyRoute />}>
               <Route path="/login" element={<Login />} />
             </Route>
 
-            {/* Protected routes: wrap everything else under the guard and Layout */}
+            {/* Protected routes only inside Layout */}
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
@@ -113,38 +97,16 @@ function AppShell() {
               </Route>
             </Route>
 
-            {/* Catch-all:
-                - If unauthenticated → redirect to /login
-                - If authenticated (edge), redirect to /dashboard so no route renders by default
-                - This enforces /dashboard as the post-login default for unknown paths */}
-            <Route
-              path="*"
-              element={
-                <AuthBoundaryRedirect />
-              }
-            />
+            {/*
+              Temporary diagnostic change:
+              - Catch-all wildcard route removed to prevent unwanted redirects (e.g., loops or blank screens).
+              - AuthBoundaryRedirect is intentionally not used for now.
+            */}
           </Routes>
         </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>
   );
-}
-
-/**
- * AuthBoundaryRedirect: catch-all handler that routes unknown paths appropriately.
- * Unauthenticated → /login, Authenticated → /dashboard.
- */
-// PUBLIC_INTERFACE
-function AuthBoundaryRedirect() {
-  const { user, loading } = useAuth();
-  if (loading) {
-    return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <span className="text-sm text-gray-600">Loading…</span>
-      </div>
-    );
-  }
-  return <Navigate to={user ? "/dashboard" : "/login"} replace />;
 }
 
 // PUBLIC_INTERFACE
