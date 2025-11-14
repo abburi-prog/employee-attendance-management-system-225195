@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './App.css';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ThemeProvider from './theme/ThemeProvider';
 import ToastProvider from './components/ToastProvider';
@@ -17,36 +17,65 @@ import LeaveBalance from "./pages/LeaveBalance";
 import Login from "./pages/Login";
 
 /**
- * ProtectedRoute: minimal auth guard for protected routes.
- * It checks the AuthContext's user and redirects unauthenticated users to /login.
+ * ProtectedRoute: robust auth guard for protected routes.
+ * It checks AuthContext for a user and redirects unauthenticated users to /login.
+ * While auth state initializes, it shows a lightweight loading placeholder.
  */
 // PUBLIC_INTERFACE
-function ProtectedRoute({ children }) {
-  /** Guard that redirects to /login when unauthenticated; waits for initial auth load. */
+function ProtectedRoute() {
+  /** Auth guard that wraps all protected sections and renders an Outlet on success. */
   const { user, loading } = useAuth();
   const [ready, setReady] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
-    // Wait for AuthProvider's initial loading to avoid flicker
     if (!loading) setReady(true);
   }, [loading]);
 
   if (!ready) {
-    // Small placeholder while auth initializes
     return <div style={{ padding: 24 }}>Loading…</div>;
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    // Preserve attempted path so after login you could navigate back if needed in the future
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return children;
+  return <Outlet />;
+}
+
+/**
+ * PublicOnlyRoute ensures authenticated users don't see the login page.
+ * If authenticated, it redirects to /dashboard.
+ */
+// PUBLIC_INTERFACE
+function PublicOnlyRoute() {
+  /** Gate for pages that should only render when not authenticated (e.g., Login). */
+  const { user, loading } = useAuth();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!loading) setReady(true);
+  }, [loading]);
+
+  if (!ready) {
+    return <div style={{ padding: 24 }}>Loading…</div>;
+  }
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Outlet />;
 }
 
 /**
  * AppShell composes providers and routes.
- * Default route redirects to /login.
- * Wrap protected routes to require authentication.
+ * Rules:
+ *  - "/" redirects to "/login"
+ *  - "/login" is public
+ *  - All other app routes are protected under <ProtectedRoute />
+ *  - Catch-all (*) redirects unauthenticated users to "/login"
  */
 // PUBLIC_INTERFACE
 function AppShell() {
@@ -54,86 +83,65 @@ function AppShell() {
     <BrowserRouter>
       <ThemeProvider>
         <ToastProvider>
-          <Layout>
-            <Routes>
-              {/* Default route → /login */}
-              <Route path="/" element={<Navigate to="/login" replace />} />
+          <Routes>
+            {/* Root always redirects to /login */}
+            <Route path="/" element={<Navigate to="/login" replace />} />
 
-              {/* Public */}
+            {/* Public routes: render without the main app Layout */}
+            <Route element={<PublicOnlyRoute />}>
               <Route path="/login" element={<Login />} />
+            </Route>
 
-              {/* Protected routes */}
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/attendance"
-                element={
-                  <ProtectedRoute>
-                    <Attendance />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/apply-leave"
-                element={
-                  <ProtectedRoute>
-                    <ApplyLeave />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/my-leaves"
-                element={
-                  <ProtectedRoute>
-                    <MyLeaveHistory />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/leave-balance"
-                element={
-                  <ProtectedRoute>
-                    <LeaveBalance />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/leaves"
-                element={
-                  <ProtectedRoute>
-                    <AdminLeaveDashboard />
-                  </ProtectedRoute>
-                }
-              />
+            {/* Protected routes: wrap everything else under the guard and Layout */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<Layout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/attendance" element={<Attendance />} />
+                <Route path="/apply-leave" element={<ApplyLeave />} />
+                <Route path="/my-leaves" element={<MyLeaveHistory />} />
+                <Route path="/leave-balance" element={<LeaveBalance />} />
+                <Route path="/admin/leaves" element={<AdminLeaveDashboard />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/not-authorized" element={<NotAuthorized />} />
+              </Route>
+            </Route>
 
-              {/* Admin dashboard page remains protected by auth; role enforcement occurs inside page */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute>
-                    <Admin />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Other public/supporting routes */}
-              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              <Route path="/not-authorized" element={<NotAuthorized />} />
-
-              {/* 404 */}
-              <Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
-            </Routes>
-          </Layout>
+            {/* Catch-all:
+                - If unauthenticated → redirect to /login
+                - If authenticated (edge), redirect to /dashboard so no route renders by default */}
+            <Route
+              path="*"
+              element={
+                <AuthBoundaryRedirect />
+              }
+            />
+          </Routes>
         </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>
   );
+}
+
+/**
+ * AuthBoundaryRedirect: catch-all handler that routes unknown paths appropriately.
+ * Unauthenticated → /login, Authenticated → /dashboard.
+ */
+// PUBLIC_INTERFACE
+function AuthBoundaryRedirect() {
+  /** Redirect unknown routes based on auth state to ensure no default render leaks. */
+  const { user, loading } = useAuth();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!loading) setReady(true);
+  }, [loading]);
+
+  if (!ready) {
+    return <div style={{ padding: 24 }}>Loading…</div>;
+  }
+
+  return <Navigate to={user ? "/dashboard" : "/login"} replace />;
 }
 
 // PUBLIC_INTERFACE
