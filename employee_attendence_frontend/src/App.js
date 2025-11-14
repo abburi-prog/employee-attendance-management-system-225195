@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import './App.css';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -29,26 +29,21 @@ import Login from "./pages/Login";
  * It checks AuthContext for a user and redirects unauthenticated users to /login.
  * While auth state initializes, it shows a lightweight loading placeholder.
  */
-// PUBLIC_INTERFACE
+/**
+ * ProtectedRoute enforces authentication without showing any loading UI.
+ * While auth is initializing, we render null (no spinner) and let routing resolve
+ * once state updates. If unauthenticated, we Navigate to /login.
+ */
 function ProtectedRoute() {
-  /** Auth guard that wraps all protected sections and renders an Outlet on success. */
   const { user, loading } = useAuth();
-  const [ready, setReady] = useState(false);
   const location = useLocation();
 
-  useEffect(() => {
-    if (!loading) setReady(true);
-  }, [loading]);
-
-  if (!ready) {
-    return <div style={{ padding: 24 }}>Loading…</div>;
-  }
+  // No visible UI while loading; avoid layout shifts or flashing spinners
+  if (loading) return null;
 
   if (!user) {
-    // Preserve attempted path so after login you could navigate back if needed in the future
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-
   return <Outlet />;
 }
 
@@ -56,23 +51,14 @@ function ProtectedRoute() {
  * PublicOnlyRoute ensures authenticated users don't see the login page.
  * If authenticated, it redirects to /dashboard.
  */
-// PUBLIC_INTERFACE
+/**
+ * PublicOnlyRoute hides its content when authenticated and never shows loaders.
+ */
 function PublicOnlyRoute() {
-  /** Gate for pages that should only render when not authenticated (e.g., Login). */
   const { user, loading } = useAuth();
-  const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    if (!loading) setReady(true);
-  }, [loading]);
-
-  if (!ready) {
-    return <div style={{ padding: 24 }}>Loading…</div>;
-  }
-
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (loading) return null;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   return <Outlet />;
 }
@@ -138,18 +124,8 @@ function AppShell() {
  */
 // PUBLIC_INTERFACE
 function AuthBoundaryRedirect() {
-  /** Redirect unknown routes based on auth state to ensure no default render leaks. */
   const { user, loading } = useAuth();
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (!loading) setReady(true);
-  }, [loading]);
-
-  if (!ready) {
-    return <div style={{ padding: 24 }}>Loading…</div>;
-  }
-
+  if (loading) return null;
   return <Navigate to={user ? "/dashboard" : "/login"} replace />;
 }
 

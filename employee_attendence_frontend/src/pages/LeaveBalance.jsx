@@ -17,7 +17,7 @@ export default function LeaveBalance() {
     return () => { mounted = false; };
   }, []);
 
-  if (balance === undefined) return <p className="p-6">Loading...</p>;
+  if (balance === undefined) return null;
   if (balance === null) {
     return (
       <div className="p-6 max-w-xl mx-auto">

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { supabase } from '../supabase/client';
+
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { useAuth } from '../context/AuthContext';
@@ -77,9 +77,8 @@ export default function Login() {
   // Trivial logout (optional)
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
-      // or await signOut();
-    } catch (e2) {
+      await signOut();
+    } catch {
       // ignore logout errors in UI
     }
   };

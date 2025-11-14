@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 export default function AdminPage() {
   const { user, profile, loading } = useAuth();
 
-  if (loading) return <div style={{ padding: 24 }}>Loading...</div>;
+  if (loading) return null;
 
   if (!user) {
     return (

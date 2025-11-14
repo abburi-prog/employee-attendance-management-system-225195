@@ -21,7 +21,7 @@ export default function AdminLeaveDashboard() {
     <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Admin Leave Dashboard</h1>
 
-      {loading && <p>Loading...</p>}
+      {loading && null}
 
       {leaves.map((leave) => (
         <div key={leave.id} className="p-4 border rounded mb-3">

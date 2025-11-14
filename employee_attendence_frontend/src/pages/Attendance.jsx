@@ -85,7 +85,7 @@ export default function AttendancePage() {
         }
       >
         {histLoading ? (
-          <div className="text-sm text-gray-600">Loading history...</div>
+          null
         ) : (
           <>
             <Table columns={columns} data={historyWithFormattedTimes} empty="No attendance records found." />
