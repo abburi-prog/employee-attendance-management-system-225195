@@ -29,7 +29,16 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
   - getAdminOverview, getAdminAttendance
   - listEmployees
 - Mock mode simulates latency and supports filters, pagination, CSV export.
-- If you provide a backend, set REACT_APP_API_BASE to the REST base URL.
+- If you provide a backend, set REACT_APP_API_BASE to the REST base URL or a relative base (e.g. "/api").
+- API base normalization:
+  - Trailing slashes are removed.
+  - Relative base like "/api" is supported (use CRA proxy or reverse proxy).
+- When API mode is enabled but the backend is unreachable or CORS blocks the request:
+  - The app automatically switches to MOCK mode at runtime and shows a toast: "Backend unreachable. Switched to mock mode..."
+  - Errors like "Failed to fetch" are surfaced in toasts with a hint to verify CORS and base URL.
+- CORS (backend requirement):
+  - Access-Control-Allow-Origin should include your frontend origin (e.g., http://localhost:3000) during development.
+  - Allow methods: GET, POST, OPTIONS. Allow headers: Content-Type, Authorization (if required).
 
 ## Hooks
 

@@ -69,8 +69,19 @@ export default function ToastProvider({ children }) {
       if (e.key === 'Escape') setToasts([]);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+
+    // Listen for service layer broadcast events so services can show toasts without direct coupling
+    const onToastEvent = (e) => {
+      const { message, type, duration } = e?.detail || {};
+      if (message) show({ message, type, duration });
+    };
+    window.addEventListener('app:toast', onToastEvent);
+
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('app:toast', onToastEvent);
+    };
+  }, [show]);
 
   return (
     <ToastContext.Provider value={value}>

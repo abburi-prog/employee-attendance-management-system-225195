@@ -1,12 +1,56 @@
-const API_BASE = process.env.REACT_APP_API_BASE || '';
+/**
+ * Attendance service with API/MOCK dual mode.
+ * Enhancements:
+ * - Normalize API base and paths
+ * - Robust fetch error messages (CORS, network)
+ * - Auto-switch to MOCK at runtime when backend unreachable, with a user-visible toast (CustomEvent)
+ * - Keep UI responsive: do not leave buttons disabled on failure
+ *
+ * CORS note (for backend maintainers):
+ * Ensure backend sets:
+ *  Access-Control-Allow-Origin: <REACT_APP_FRONTEND_URL or * in dev>
+ *  Access-Control-Allow-Methods: GET,POST,OPTIONS
+ *  Access-Control-Allow-Headers: Content-Type, Authorization
+ */
+const RAW_API_BASE = (process.env.REACT_APP_API_BASE || '').trim();
+
+// Normalize API base, remove trailing slashes.
+function normalizeBase(url) {
+  if (!url) return '';
+  try {
+    // If relative like "/api", leave as is (CRA dev proxy scenario)
+    if (url.startsWith('/')) return url.replace(/\/+$/, '');
+    // absolute
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    // fallback: basic trim of trailing slash
+    return url.replace(/\/+$/, '');
+  }
+}
+let API_BASE = normalizeBase(RAW_API_BASE);
+
 // Single toggle for mock mode. If API_BASE is not set, default to mock mode.
-const MOCK_MODE = !API_BASE;
+// This flag can be flipped to true at runtime if network errors occur.
+let MOCK_MODE = !API_BASE;
 
 // Minimal runtime diagnostics to clarify which mode is active and where API points to.
 // eslint-disable-next-line no-console
 console.info(
   `[AttendanceService:init] mode=${MOCK_MODE ? 'MOCK' : 'API'} base=${API_BASE || '(unset)'}`
 );
+
+/**
+ * Broadcasts a toast event the app can consume. ToastProvider listens for 'app:toast' events.
+ */
+function broadcastToast(message, type = 'error', duration = 3500) {
+  try {
+    const evt = new CustomEvent('app:toast', { detail: { message, type, duration } });
+    window.dispatchEvent(evt);
+  } catch {
+    // no-op if CustomEvent not available (tests)
+  }
+}
 
 /**
  * In-memory storage for mock data. Not persisted across reloads.
@@ -52,14 +96,25 @@ async function apiFetch(path, options) {
   if (!API_BASE) {
     throw new Error('API base URL is not configured');
   }
+
+  // Ensure path starts with single leading slash for absolute base, or append relative for "/api" base.
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  const url = API_BASE.startsWith('/')
+    ? `${API_BASE}${normalizedPath}` // relative base (dev proxy)
+    : `${API_BASE}${normalizedPath}`; // absolute base
+
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(url, {
       headers: { 'Content-Type': 'application/json' },
+      // Credentials note: if backend uses cookies and same-site, may need credentials: 'include'
       ...options,
     });
+
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(text || `Request failed: ${res.status}`);
+      const reason = text || `Request failed: ${res.status}`;
+      throw new Error(reason);
     }
     try {
       return await res.json();
@@ -67,9 +122,24 @@ async function apiFetch(path, options) {
       return null;
     }
   } catch (e) {
+    // Detect common "Failed to fetch" and CORS/network failures
+    const msg = e?.message || 'Network error';
+    const hint = msg.includes('Failed to fetch') || msg.includes('NetworkError')
+      ? 'Network/CORS error. Verify REACT_APP_API_BASE and backend CORS.'
+      : msg;
+
     // eslint-disable-next-line no-console
-    console.warn('[AttendanceService:apiFetch] Falling back to mock due to error:', e?.message);
-    throw e;
+    console.warn('[AttendanceService:apiFetch] error:', msg, 'url=', url);
+
+    // Auto-switch to mock mode only once per session to prevent flip-flop.
+    if (!MOCK_MODE) {
+      MOCK_MODE = true;
+      broadcastToast('Backend unreachable. Switched to mock mode for a seamless experience.', 'info', 4500);
+      // eslint-disable-next-line no-console
+      console.info('[AttendanceService] Auto-switched to MOCK mode due to API fetch error.');
+    }
+
+    throw new Error(hint);
   }
 }
 
@@ -90,9 +160,8 @@ export async function getTodayStatus(userId = 'u-2') {
   try {
     return await apiFetch(`/attendance/today-status?userId=${encodeURIComponent(userId)}`);
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[AttendanceService:getTodayStatus] API error:', e?.message);
-    throw e;
+    // Surface explicit fetch exceptions
+    throw new Error(e?.message || 'Failed to load today status');
   }
 }
 

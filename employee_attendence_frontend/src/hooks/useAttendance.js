@@ -74,9 +74,10 @@ export default function useAttendance({ userId = 'u-2' } = {}) {
         console.warn('[useAttendance] clock-in failed', res);
       }
     } catch (e) {
-      toast.show({ type: 'error', message: e?.message || 'Unable to clock in' });
+      const msg = e?.message || 'Unable to clock in';
+      toast.show({ type: 'error', message: msg });
       // eslint-disable-next-line no-console
-      console.warn('[useAttendance] clock-in error', e);
+      console.warn('[useAttendance] clock-in error', msg);
     } finally {
       setLoading(false);
     }
@@ -99,9 +100,10 @@ export default function useAttendance({ userId = 'u-2' } = {}) {
         console.warn('[useAttendance] clock-out failed', res);
       }
     } catch (e) {
-      toast.show({ type: 'error', message: e?.message || 'Unable to clock out' });
+      const msg = e?.message || 'Unable to clock out';
+      toast.show({ type: 'error', message: msg });
       // eslint-disable-next-line no-console
-      console.warn('[useAttendance] clock-out error', e);
+      console.warn('[useAttendance] clock-out error', msg);
     } finally {
       setLoading(false);
     }
