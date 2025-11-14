@@ -16,7 +16,7 @@ import { useAuth } from '../context/AuthContext';
 // PUBLIC_INTERFACE
 export default function Login() {
   const navigate = useNavigate();
-  const { user, signOut, signIn } = useAuth();
+  const { user, loading, signOut, signIn } = useAuth();
 
   // Pre-fill email if present in query string or stored elsewhere (future)
   const [email, setEmail] = useState('');
@@ -25,12 +25,12 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // If already logged in, redirect to dashboard
+  // If already logged in, redirect to dashboard (only after auth finished loading)
   useEffect(() => {
-    if (user) {
+    if (!loading && user) {
       navigate('/dashboard', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, loading, navigate]);
 
   // Simple email regex for UI-level validation (actual validation by Supabase on server)
   const isValidEmail = (val) => /\S+@\S+\.\S+/.test(val);
@@ -96,8 +96,8 @@ export default function Login() {
     }
   };
 
-  // If user is present, defensively block form and render a redirect link/state
-  if (user) {
+  // If user is present and auth is not loading, defensively block form and render a redirect link/state
+  if (!loading && user) {
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -17,6 +17,14 @@ import LeaveBalance from "./pages/LeaveBalance";
 import Login from "./pages/Login";
 
 /**
+ * Routing contract:
+ * - "/" → redirects to "/login"
+ * - "/login" is public (not wrapped by app Layout)
+ * - All other routes are protected by ProtectedRoute and then rendered inside Layout
+ * - Catch-all "*" redirects unauthenticated users to "/login" and authenticated users to "/dashboard"
+ */
+
+/**
  * ProtectedRoute: robust auth guard for protected routes.
  * It checks AuthContext for a user and redirects unauthenticated users to /login.
  * While auth state initializes, it shows a lightweight loading placeholder.
