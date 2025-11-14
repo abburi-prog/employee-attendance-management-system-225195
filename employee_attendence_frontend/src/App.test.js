@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders Dashboard route by default', () => {
+test('redirects to Login by default', () => {
   render(<App />);
-  // Look for known content on the Dashboard page or layout
-  const header = screen.getByText(/Employee Attendance/i);
-  expect(header).toBeInTheDocument();
+  // Login page renders a "Sign In" button; assert its presence
+  const signInBtn = screen.getByRole('button', { name: /Sign In/i });
+  expect(signInBtn).toBeInTheDocument();
 });
