@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Card } from "../components/ui/Card";
-import { Table } from "../components/ui/Table";
+import Card from "../components/ui/Card";
+import Table from "../components/ui/Table";
 import Button from "../components/ui/Button";
 import { LuRefreshCcw } from "react-icons/lu";
 
