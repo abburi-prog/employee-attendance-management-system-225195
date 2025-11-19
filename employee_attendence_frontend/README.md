@@ -1,146 +1,76 @@
-# Employee Attendance Frontend (React + Supabase)
+# Employee Attendance Frontend
 
-Modern React application for managing and tracking employee attendance.
-Styled with Tailwind (Ocean Professional theme). Supabase client is configured for optional future authentication and data storage.
+This React app integrates Supabase Auth for sign-in/sign-out, session management, and role-based access (admin).
 
-## Pages and Routing
+## Setup
 
-- / → redirects to /dashboard
-- /dashboard → overview and quick components
-- /attendance → clock-in/out with today's status and history (filters, pagination)
-- /admin → KPIs, attendance overview table with filters/search/export, employees list (visible only if role === 'admin')
-- /admin/leaves → Admin Leave Approvals (list, approve/deny with confirmation and toasts)
-- /admin/attendance → Admin Attendance Viewer (user search/autocomplete, date range filters, table + pagination)
-- /settings → feature flags placeholder
-- /not-authorized → friendly message for restricted access
-
-## Layout and Theme
-
-- TopNav shows app title and user/role badge (fallback to Guest/employee).
-- SideNav shows Dashboard, Attendance, Admin (role === 'admin'), Settings.
-- Navbar and Admin shell hide all admin-only menu entries when profile.role !== 'admin' (RBAC-driven menu visibility).
-- ThemeProvider implements Ocean Professional palette:
-  - primary #2563EB, success/secondary #F59E0B, error #EF4444, background #f9fafb, surface #ffffff, text #111827
-- Accessible components with keyboard focus states.
-
-## Data Layer and Mock/API Mode
-
-- services/attendanceService.js reads REACT_APP_API_BASE. If not set, runs in MOCK mode using in-memory arrays.
-- services/adminService.js reads REACT_APP_API_BASE or REACT_APP_BACKEND_URL. If both are missing or backend unreachable, it runs in MOCK mode and shows a toast.
-- Functions:
-  - getTodayStatus, clockIn, clockOut
-  - getAttendanceHistory
-  - getAdminOverview, getAdminAttendance
-  - listEmployees
-- Mock mode simulates latency and supports filters, pagination, CSV export.
-- If you provide a backend, set REACT_APP_API_BASE to the REST base URL or a relative base (e.g. "/api").
-- API base normalization:
-  - Trailing slashes are removed.
-  - Relative base like "/api" is supported (use CRA proxy or reverse proxy).
-- When API mode is enabled but the backend is unreachable or CORS blocks the request:
-  - The app automatically switches to MOCK mode at runtime and shows a toast: "Backend unreachable. Switched to mock mode..."
-  - Errors like "Failed to fetch" are surfaced in toasts with a hint to verify CORS and base URL.
-- CORS (backend requirement):
-  - Access-Control-Allow-Origin should include your frontend origin (e.g., http://localhost:3000) during development.
-  - Allow methods: GET, POST, OPTIONS. Allow headers: Content-Type, Authorization (if required).
-
-## Time Formatting
-
-- All displayed times (clock-in, clock-out, table timestamps) are shown as HH:mm:ss and respect the user's local timezone.
-- The UI uses a shared utility in `src/utils/time.js` (formatTimeHHmmss) to ensure consistent formatting.
-- In mock mode, the service now returns ISO timestamps (e.g., 2025-01-01T09:30:15.123Z) so seconds are preserved end-to-end.
-- Worked duration formatting:
-  - `src/utils/duration.js` provides:
-    - `formatDurationHMS(totalSeconds)` → "X hours Y mins Z secs" with correct pluralization.
-    - `diffSecondsBetweenIso(startIso, endIso)` to compute total seconds between timestamps.
-  - Example: 12:37:02 → 13:49:04 yields `diffSecondsBetweenIso = 4322` and `formatDurationHMS(4322) = '1 hour 12 mins 2 secs'`.
-  - Attendance Today status, Attendance History, Admin table and CSV export now use the humanized duration.
-
-## Hooks
-
-- useAttendance: Provides today's status, clock in/out actions, history (with pagination and date filters), loading/error.
-- useAdminData: Provides KPIs, attendance rows with filters, employees list.
-
-## Shared Components
-
-- Button, Card, KPIStat, Table, Pagination, DateRangePicker, ToastProvider.
-
-## Authentication and Roles
-
-- Auth remains optional. Role is resolved from `profiles.role` when available; otherwise defaults to `employee`.
-- Admin navigation item is hidden for non-admin users.
-- RBAC enforced in routes:
-  - Admin-only pages are protected by `<AdminRoute />`.
-  - Accessing `/admin`, `/admin/leaves`, `/admin/attendance` without an authenticated admin role will redirect to `/login` and no admin UI is rendered.
-- RBAC-driven menu visibility:
-  - Navigation components read `profile.role` from AuthContext (same source as AdminRoute).
-  - Admin-related menu items (Admin, Leave Approvals, Attendance Viewer) are not rendered for non-admin users to prevent visibility and accidental clicks.
-- Local testing tips:
-  - If using Supabase, set your user's `profiles.role` to `admin` to access admin routes.
-  - If you don't have backend auth yet, you can still run the app normally; admin routes will remain inaccessible until a user session exists with `role === 'admin'`.
-
-## Environment
-
-Copy .env.example to .env and set as needed:
-
-```
-REACT_APP_SUPABASE_URL=
-REACT_APP_SUPABASE_KEY=
-REACT_APP_FRONTEND_URL=http://localhost:3000
-REACT_APP_API_BASE=   # if empty → mock mode; if set → API mode (e.g., http://localhost:4000)
-REACT_APP_BACKEND_URL=  # optional alternative base; adminService falls back to this if provided
-REACT_APP_FEATURE_FLAGS={}
-```
-
-Notes:
-- Attendance service logs at init: `[AttendanceService:init] mode=MOCK|API base=...`.
-- In API mode, the backend must expose:
-  - POST /attendance/clock-in  body: { userId }
-  - POST /attendance/clock-out body: { userId }
-  - GET  /attendance/today-status?userId=...
-  - GET  /attendance/history?userId=...&page=1&pageSize=10&start=YYYY-MM-DD&end=YYYY-MM-DD
-  - GET  /admin/overview?date=YYYY-MM-DD
-  - GET  /admin/attendance?... (filters)
-  - GET  /admin/employees?... (filters)
-- If API is unavailable or returns an error, user-facing toasts show the error. Keep `REACT_APP_API_BASE` unset to run in mock mode.
-
-For Supabase setup details see SUPABASE.md.
-
-## Install and Run
-
+1) Install dependencies
 ```
 npm install
+```
+
+2) Create `.env` in `employee_attendence_frontend/`:
+```
+REACT_APP_SUPABASE_URL=your_supabase_url
+REACT_APP_SUPABASE_KEY=your_supabase_anon_key
+REACT_APP_FRONTEND_URL=http://localhost:3000
+```
+
+Optional (existing):
+- REACT_APP_API_BASE
+- REACT_APP_BACKEND_URL
+
+3) Start the app
+```
 npm start
 ```
 
-App runs at http://localhost:3000
+## Supabase Auth
 
-## Build
+- Client initialized at `src/supabase/client.js`
+- `AuthProvider` at `src/context/AuthContext.jsx`:
+  - Subscribes to `supabase.auth.onAuthStateChange`
+  - Exposes:
+    - user, session, loading, profile (optional)
+    - signIn(email, password), signOut()
+  - Derives role from:
+    1. user.app_metadata.role or user.user_metadata.role
+    2. Fallback: profiles table (id = auth.users.id) with `role` field
+    3. Default: `employee`
 
+- Login page at `src/pages/Login.jsx`:
+  - Email/password sign-in
+  - Redirects to `/dashboard` on success
+
+- Navbar at `src/components/Navbar.jsx` and `src/components/NavBar.jsx`:
+  - Shows Login when not authenticated
+  - Shows Logout and user email when authenticated
+  - Hides Admin links when role !== 'admin'
+
+## Route Guards
+
+- `src/routes/AdminRoute.jsx` protects admin-only routes:
+  - Requires authenticated user with role `admin`
+  - Uses safety timeout so UI does not hang
+
+- App wraps routes with `AuthProvider` in `src/index.js`
+
+## Profiles Table (optional, for roles)
+
+Create table in Supabase:
 ```
-npm run build
+create table if not exists public.profiles (
+  id uuid primary key references auth.users on delete cascade,
+  role text not null default 'employee',
+  updated_at timestamp with time zone default timezone('utc'::text, now())
+);
+alter table public.profiles enable row level security;
 ```
 
-## Tests
-
-- A smoke test renders the app and checks for the header "Employee Attendance".
-- Run: `npm test`
-
-## Project Structure
-
-- src/theme/ThemeProvider.jsx
-- src/components/ToastProvider.jsx
-- src/components/layout/{TopNav,SideNav,Layout}.jsx
-- src/components/ui/{Button,Card,KPIStat,Table,Pagination,DateRangePicker}.jsx
-- src/services/attendanceService.js
-- src/hooks/{useAttendance,useAdminData}.js
-- src/pages/{Dashboard,Attendance,Admin,Settings,NotAuthorized}.jsx
-- src/context/AuthContext.jsx
-- src/supabase/client.js
-- src/routes/config.js (central route config with optional roles metadata for admin-only routes)
+Admin roles recognized: `admin`, `superadmin` (ensure you set `role` accordingly).
 
 ## Notes
 
-- Do not hardcode Supabase credentials. Use env vars.
-- Admin page shows Not Authorized unless profile.role === 'admin'.
-- No login route; flows work without authentication by design.
+- Do not hardcode secrets; use environment variables.
+- Keep existing safety timeouts for a responsive UI even if auth events delay.
+- Confirm Authentication → URL Configuration in Supabase matches `REACT_APP_FRONTEND_URL`.

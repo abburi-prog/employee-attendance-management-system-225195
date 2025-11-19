@@ -1,197 +1,62 @@
-# Supabase Integration Notes
+# Supabase Integration
 
-This frontend uses Supabase for auth and attendance storage.
+This frontend uses Supabase Auth for session management and role-based access.
 
 ## Environment Variables
+
+Set these in `.env`:
 - REACT_APP_SUPABASE_URL
 - REACT_APP_SUPABASE_KEY
-- (Optional) REACT_APP_FRONTEND_URL for email confirmation redirect
+- REACT_APP_FRONTEND_URL (optional; used for magic link/redirect consistency)
 
-Copy `.env.example` to `.env` and set the above values. Do not commit the `.env` file. Restart the dev server after changes.
+## Client
 
-Currently present envs in container (for reference): REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_KEY, REACT_APP_API_BASE, REACT_APP_BACKEND_URL, REACT_APP_FRONTEND_URL, REACT_APP_WS_URL, REACT_APP_NODE_ENV, REACT_APP_NEXT_TELEMETRY_DISABLED, REACT_APP_ENABLE_SOURCE_MAPS, REACT_APP_PORT, REACT_APP_TRUST_PROXY, REACT_APP_LOG_LEVEL, REACT_APP_HEALTHCHECK_PATH, REACT_APP_FEATURE_FLAGS, REACT_APP_EXPERIMENTS_ENABLED
+- Initialized in `src/supabase/client.js` with session persistence and auto-refresh.
 
-## Auth
-This app uses Supabase JS v2 and email/password authentication only.
+## Auth Provider
 
-- Enable Email provider in Supabase Dashboard:
-  - Go to Authentication → Providers → Email
-  - Ensure "Enable email signups" and "Password sign in" are enabled
-  - Configure "Confirm email" as you prefer:
-    - If ON: Users must confirm via email link before they can sign in. Until then, sign-in may fail with code like `email_not_confirmed` and message "Email not confirmed".
-    - If OFF: Users can sign in immediately after sign-up.
+`src/context/AuthContext.jsx`:
+- Subscribes to `supabase.auth.onAuthStateChange`
+- Exposes `user`, `session`, `loading`, `profile` (optional), helpers:
+  - `signIn(email, password)`
+  - `signOut()`
 
-- URL Configuration and Redirects:
-  - In Supabase Dashboard → Authentication → URL Configuration:
-    - Set the "Site URL" to your frontend (e.g., http://localhost:3000 during development).
-    - Add any dev URLs to Additional Redirect URLs if needed.
-  - The app supports an optional `REACT_APP_FRONTEND_URL`. When set, we pass it as `emailRedirectTo` during `signUp`. Otherwise, the Supabase "Site URL" is used.
-  - Ensure there is no mismatch between the Dashboard "Site URL" and your actual dev URL (including port); otherwise confirmation links may not return to your app.
+Role resolution order:
+1. `user.app_metadata.role` (or `user.user_metadata.role`)
+2. Fallback `public.profiles.role` by `id = auth.users.id`
+3. Default `employee`
 
-- The frontend (v2) calls:
-  - `supabase.auth.signUp({ email, password, options: { data: { full_name }, emailRedirectTo?: REACT_APP_FRONTEND_URL } })`
-  - `supabase.auth.signInWithPassword({ email, password })`
-  - `supabase.auth.signOut()`
-  - `supabase.auth.getUser()` (used in diagnostics)
+Admin-only routes require `role === 'admin'` (or `superadmin` if you extend).
 
-Important behavior notes:
-- If email confirmation is ON, `signUp` returns `data.session = null` and no user is signed in until the email is confirmed.
-- After clicking the email link, the browser should redirect back to your frontend (Site URL or `emailRedirectTo`) with a session established.
-- We log minimal diagnostics at runtime:
-  - `[Supabase:init] URL present=... KEY present=... Host=...`
-  - `[Supabase:signInWithPassword] error { code, message }`
-  - `getUser` presence after a failed sign-in
-- These logs help confirm env injection and clarify exact errors without exposing secrets.
+## Profiles Table
 
-## Attendance Table (SQL + RLS)
-
-```sql
-create extension if not exists "uuid-ossp";
-
-create table if not exists public.attendance (
-  id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null,
-  status text not null check (status in ('in','out')),
-  created_at timestamptz not null default now()
-);
-
-alter table if exists public.attendance enable row level security;
-
--- Users can insert/select their own rows
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies where schemaname = 'public' and tablename = 'attendance' and policyname = 'Individuals can view own attendance'
-  ) then
-    create policy "Individuals can view own attendance"
-      on public.attendance for select
-      using (auth.uid() = user_id);
-  end if;
-
-  if not exists (
-    select 1 from pg_policies where schemaname = 'public' and tablename = 'attendance' and policyname = 'Individuals can insert own attendance'
-  ) then
-    create policy "Individuals can insert own attendance"
-      on public.attendance for insert
-      with check (auth.uid() = user_id);
-  end if;
-end $$;
+Recommended SQL:
 ```
-
-Optional: grant admin-level read via profiles.role:
-```sql
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies where schemaname = 'public' and tablename = 'attendance' and policyname = 'Admins can view all attendance'
-  ) then
-    create policy "Admins can view all attendance"
-      on public.attendance for select
-      using (
-        exists(
-          select 1 from public.profiles p
-          where p.id = auth.uid() and p.role = 'admin'
-        )
-      );
-  end if;
-end $$;
-```
-
-## Profiles Auto-Creation on Signup
-
-To ensure each new authenticated user has a profile row created automatically, create the `profiles` table, a SECURITY DEFINER function, and a trigger on `auth.users`.
-
-Requirements:
-- Table public.profiles:
-  - id uuid primary key references auth.users(id)
-  - full_name text
-  - role text default 'employee'
-  - created_at timestamptz default now()
-- Function public.handle_new_user() that inserts into profiles when a new auth.users row is inserted
-- Trigger on auth.users to call the function
-- RLS policy to allow users to select their own profile
-
-Run the following SQL in Supabase SQL Editor:
-
-```sql
--- 1) Table
 create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  full_name text,
-  role text default 'employee',
-  created_at timestamptz default now()
+  id uuid primary key references auth.users on delete cascade,
+  role text not null default 'employee',
+  updated_at timestamptz default now()
 );
-
--- 2) Function (SECURITY DEFINER)
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, full_name, role)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', ''), 'employee')
-  on conflict (id) do nothing;
-  return new;
-end;
-$$ language plpgsql security definer;
-
--- Make sure the function owner can insert into public.profiles
-alter function public.handle_new_user() owner to postgres;
-
--- 3) Trigger on auth.users
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-after insert on auth.users
-for each row execute function public.handle_new_user();
-
--- 4) RLS + Policies
 alter table public.profiles enable row level security;
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'Users can view own profile'
-  ) then
-    create policy "Users can view own profile" on public.profiles
-      for select using (auth.uid() = id);
-  end if;
-
-  if not exists (
-    select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'Users can update own profile'
-  ) then
-    create policy "Users can update own profile" on public.profiles
-      for update using (auth.uid() = id);
-  end if;
-end $$;
 ```
 
-Notes:
-- The function uses `new.raw_user_meta_data->>'full_name'` to populate `full_name` from sign-up metadata when available.
-- The default `role` is set to `employee` to align with app expectations.
-- The function is `SECURITY DEFINER` so it can insert into `public.profiles`. Ensure its owner has the right privileges (e.g., `postgres`).
-- Add additional policies as needed.
+Add policies as needed (e.g., users can select/update own profile; admins can read all).
 
-## Troubleshooting
+## Redirects
 
-- If you see errors like `PGRST202 Could not find the function public.run_sql(query)`, run the SQL directly in the Supabase SQL Editor as above. The app does not require `run_sql` to function; it's only used for automation.
-- Ensure RLS policies are present; otherwise, the client may not be able to read profiles/attendance.
+Supabase Dashboard → Authentication → URL Configuration:
+- Site URL: http://localhost:3000 (dev)
+- Add additional redirect URLs as needed
 
-- Diagnosing login failures:
-  1) Open DevTools Console:
-     - Look for `[Supabase:init] URL present=... KEY present=... Host=...`. If either is false, the env vars were not injected; update `.env` and restart the dev server.
-  2) Attempt to sign in with test credentials:
-     - If it fails, the console will show `[Supabase:signInWithPassword] error { code, message }`.
-     - Common codes:
-       - `email_not_confirmed`: confirm the email or disable "Confirm email" for testing.
-       - `invalid_credentials`: check the email/password or reset the password.
-       - `over_email_send_rate_limit`: wait before requesting another email.
-  3) Check Supabase URL Configuration:
-     - Confirm the Dashboard "Site URL" matches your actual frontend URL and port (e.g., http://localhost:3000).
-     - If using a different dev port, add it to Additional Redirect URLs.
-  4) Optional redirect override:
-     - If `REACT_APP_FRONTEND_URL` is set, we pass `emailRedirectTo` in signUp. If you change ports, update this env var and restart the dev server.
+Ensure this matches `REACT_APP_FRONTEND_URL`.
 
-- CORS:
-  Supabase handles CORS for the API; most auth-related CORS-like issues stem from an incorrect "Site URL" or missing allowed redirects.
+## UI
 
-## Admin Access Considerations
+- `src/pages/Login.jsx` implements email/password login.
+- `src/components/Navbar.jsx` and `src/components/NavBar.jsx` show Login/Logout and hide Admin links for non-admins.
+- `src/routes/AdminRoute.jsx` protects Admin routes with safety timeouts to avoid indefinite loading.
 
-If the app needs admin-level data access on the client, implement policies that check `exists(select 1 from public.profiles where id = auth.uid() and role = 'admin')` for broader selects, or route admin data via a secure backend using the service role key (never expose service role keys in the client).
+## Security
+
+- Do not expose service role keys in the frontend.
+- Use RLS policies for tables accessed from the client.

@@ -1,207 +1,247 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { supabase } from '../supabase/client';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import supabase from '../supabase/client';
 
-/**
- * AuthContext provides current user session info, profile, and auth helpers.
- * It subscribes to Supabase auth state changes and exposes loading and error.
- */
-const AuthContext = createContext({
-  user: null,
-  session: null,
-  profile: null, // { full_name, role, ... }
-  loading: true,
-  error: null,
-  signUp: async (_email, _password, _fullName) => {},
-  signIn: async (_email, _password) => {},
-  signOut: async () => {},
-});
+// Role derivation strategy:
+// 1) Try user.app_metadata.role or user.user_metadata.role
+// 2) Try claims in access token (app_metadata on user object typically mirrors this)
+// 3) Fallback to profiles table: { id (uuid) PK references auth.users, role text }
+//    profiles table needs to exist with row per user
+
+const DEFAULT_ROLE = 'user';
+const ADMIN_ROLES = new Set(['admin', 'superadmin']);
 
 // PUBLIC_INTERFACE
+/**
+ * AuthContextValue
+ * Represents the auth state and helper methods exposed to the app.
+ */
+const AuthContext = createContext({
+  loading: true,
+  session: null,
+  user: null,
+  role: DEFAULT_ROLE,
+  isAdmin: false,
+  error: null,
+  loginWithEmailPassword: async (_email, _password) => {},
+  loginWithMagicLink: async (_email, _redirectTo) => {},
+  logout: async () => {},
+  refreshProfileRole: async () => {},
+});
+
+// Safety timeout to avoid hanging loading state if auth state change never arrives
+const SAFETY_INIT_TIMEOUT_MS = 8000;
+
+// PUBLIC_INTERFACE
+/**
+ * AuthProvider wraps the app and provides authentication state via context.
+ * - Subscribes to supabase auth state changes
+ * - Persists session and auto refreshes tokens
+ * - Derives role from user/app_metadata or profiles table
+ * - Exposes login/logout functions
+ */
 export function AuthProvider({ children }) {
-  /**
-   * AuthProvider wraps the app and manages the authenticated user state.
-   * It initializes from supabase.auth.getSession and listens to onAuthStateChange.
-   * On login, it fetches the user's profile from 'profiles' table if available.
-   */
-  const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [user, setUser] = useState(null);
+  const [role, setRole] = useState(DEFAULT_ROLE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const initTimeoutRef = useRef(null);
 
-  // Helper to fetch the profile for current user
-  const loadProfile = async (uid) => {
-    if (!uid) {
-      setProfile(null);
-      return;
+  const deriveRoleFromUser = (u) => {
+    if (!u) return null;
+    const metaRole =
+      (u.app_metadata && (u.app_metadata.role || (u.app_metadata.claims && u.app_metadata.claims.role))) ||
+      (u.user_metadata && u.user_metadata.role);
+    if (typeof metaRole === 'string' && metaRole.trim()) {
+      return metaRole.toLowerCase();
     }
-    try {
-      const { data, error: pErr } = await supabase
-        .from('profiles')
-        .select('full_name, role')
-        .eq('id', uid)
-        .single();
-      if (pErr) {
-        // If table absent or row missing, don't crash the app; set to null
-        // eslint-disable-next-line no-console
-        console.warn('Profile fetch warning:', pErr.message);
-        setProfile(null);
-      } else {
-        setProfile(data || null);
-      }
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('Profile fetch failed:', e?.message);
-      setProfile(null);
-    }
+    return null;
   };
 
-  // Initial session retrieval
+  const fetchProfileRole = useCallback(async (uid) => {
+    try {
+      if (!uid) return null;
+      const { data, error: dbErr } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', uid)
+        .maybeSingle();
+
+      if (dbErr) {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to read profile role:', dbErr.message);
+        return null;
+      }
+      if (data && data.role) {
+        return String(data.role).toLowerCase();
+      }
+      return null;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('Profile role fetch exception:', e);
+      return null;
+    }
+  }, []);
+
+  const computeRole = useCallback(
+    async (u) => {
+      // Try user metadata first
+      let r = deriveRoleFromUser(u);
+      if (r) return r;
+      // Fallback to profiles table
+      r = await fetchProfileRole(u?.id);
+      return r || DEFAULT_ROLE;
+    },
+    [fetchProfileRole]
+  );
+
+  const refreshProfileRole = useCallback(async () => {
+    if (!user) return DEFAULT_ROLE;
+    const nextRole = await computeRole(user);
+    setRole(nextRole);
+    return nextRole;
+  }, [user, computeRole]);
+
+  // Initial session load + subscription
   useEffect(() => {
     let isMounted = true;
 
-    async function initAuth() {
+    const init = async () => {
       try {
-        const {
-          data: { session: currentSession },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-        if (sessionError) setError(sessionError);
-
-        if (isMounted) {
-          setSession(currentSession || null);
-          const currentUser = currentSession?.user || null;
-          setUser(currentUser);
-          if (currentUser?.id) await loadProfile(currentUser.id);
-        }
-      } catch (err) {
-        setError(err);
+        const { data: { session: currentSession } = {} } = await supabase.auth.getSession();
+        if (!isMounted) return;
+        setSession(currentSession || null);
+        const u = currentSession?.user || null;
+        setUser(u || null);
+        const computedRole = await computeRole(u);
+        if (isMounted) setRole(computedRole);
+      } catch (e) {
+        if (isMounted) setError(e);
       } finally {
+        // keep safety timeout considerations: don't hang indefinitely
         if (isMounted) setLoading(false);
       }
-    }
+    };
 
-    initAuth();
-
-    // Subscribe to auth state changes
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      setSession(newSession || null);
-      const newUser = newSession?.user || null;
-      setUser(newUser);
-      if (newUser?.id) {
-        await loadProfile(newUser.id);
-      } else {
-        setProfile(null);
+    // safety timeout to force loading=false even if Supabase event never fires
+    initTimeoutRef.current = setTimeout(() => {
+      if (isMounted && loading) {
+        // eslint-disable-next-line no-console
+        console.warn('Auth init safety timeout reached, proceeding without session.');
+        setLoading(false);
       }
+    }, SAFETY_INIT_TIMEOUT_MS);
+
+    init();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!isMounted) return;
+      setSession(newSession || null);
+      const u = newSession?.user || null;
+      setUser(u);
+      const computedRole = await computeRole(u);
+      setRole(computedRole);
     });
 
     return () => {
       isMounted = false;
-      // Ensure cleanup of subscription
-      subscription.subscription?.unsubscribe?.();
+      if (subscription) subscription.subscription.unsubscribe();
+      if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // PUBLIC_INTERFACE
-  const signUp = async (email, password, fullName) => {
-    /**
-     * Sign up user via email/password and store optional full_name in user metadata.
-     * Also ensures profile can be created via RLS trigger in DB if configured.
-     *
-     * If REACT_APP_FRONTEND_URL is set, pass it as emailRedirectTo to ensure the confirmation
-     * link returns to this app (useful in development). Otherwise rely on Supabase Site URL.
-     */
+  /**
+   * loginWithEmailPassword
+   * Sign in the user using email/password.
+   */
+  const loginWithEmailPassword = useCallback(async (email, password) => {
     setError(null);
-    const redirectTo = process.env.REACT_APP_FRONTEND_URL;
-    const baseOptions = fullName ? { data: { full_name: fullName } } : {};
-    const options = redirectTo ? { ...baseOptions, emailRedirectTo: redirectTo } : baseOptions;
-
-    const { data, error: sErr } = await supabase.auth.signUp({
-      email,
-      password,
-      options,
-    });
-    if (sErr) {
-      setError(sErr);
-      throw sErr;
+    const { data, error: signErr } = await supabase.auth.signInWithPassword({ email, password });
+    if (signErr) {
+      setError(signErr);
+      return { data: null, error: signErr };
     }
-    // data.session may be null if email confirmation is on; handle gracefully
-    return data;
-  };
+    return { data, error: null };
+  }, []);
 
   // PUBLIC_INTERFACE
-  const signIn = async (email, password) => {
-    /** Sign in using email/password. */
+  /**
+   * loginWithMagicLink
+   * Sends a magic link to the provided email.
+   * Use REACT_APP_FRONTEND_URL as redirect if provided, else window.location.origin.
+   */
+  const loginWithMagicLink = useCallback(async (email, redirectTo) => {
     setError(null);
-
-    // Attempt sign-in and capture detailed error payload
-    const { data, error: iErr } = await supabase.auth.signInWithPassword({
+    const siteUrl =
+      redirectTo ||
+      process.env.REACT_APP_FRONTEND_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : undefined);
+    const { data, error: magicErr } = await supabase.auth.signInWithOtp({
       email,
-      password,
+      options: {
+        emailRedirectTo: siteUrl,
+      },
     });
-
-    if (iErr) {
-      // eslint-disable-next-line no-console
-      console.error('[Supabase:signInWithPassword] error', {
-        code: iErr?.code,
-        message: iErr?.message,
-      });
-
-      // Try to fetch current user to confirm if email is unconfirmed vs bad credentials
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        // eslint-disable-next-line no-console
-        console.info('[Supabase:getUser after failed sign-in] userPresent=', Boolean(userData?.user));
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.info('[Supabase:getUser after failed sign-in] threw');
-      }
-
-      setError(iErr);
-      throw iErr;
+    if (magicErr) {
+      setError(magicErr);
+      return { data: null, error: magicErr };
     }
-
-    // On success, explicitly log presence of session and user (no sensitive data)
-    // eslint-disable-next-line no-console
-    console.info('[Supabase:signInWithPassword] success', {
-      hasSession: Boolean(data?.session),
-      hasUser: Boolean(data?.user),
-    });
-
-    return data;
-  };
+    return { data, error: null };
+  }, []);
 
   // PUBLIC_INTERFACE
-  const signOut = async () => {
-    /** Sign out the current user. */
+  /**
+   * logout
+   * Signs the current user out.
+   */
+  const logout = useCallback(async () => {
     setError(null);
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      setError(e);
-      throw e;
+    const { error: signOutErr } = await supabase.auth.signOut();
+    if (signOutErr) {
+      setError(signOutErr);
+      return { error: signOutErr };
     }
-  };
+    return { error: null };
+  }, []);
 
-  const value = useMemo(
+  const contextValue = useMemo(
     () => ({
-      user,
-      session,
-      profile,
       loading,
+      session,
+      user,
+      role,
+      isAdmin: ADMIN_ROLES.has(role),
       error,
-      signUp,
-      signIn,
-      signOut,
+      loginWithEmailPassword,
+      loginWithMagicLink,
+      logout,
+      refreshProfileRole,
     }),
-    [user, session, profile, loading, error]
+    [
+      loading,
+      session,
+      user,
+      role,
+      error,
+      loginWithEmailPassword,
+      loginWithMagicLink,
+      logout,
+      refreshProfileRole,
+    ]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }
 
 // PUBLIC_INTERFACE
+/**
+ * useAuth
+ * Hook to access auth context.
+ */
 export function useAuth() {
-  /** Hook to access auth context values. */
   return useContext(AuthContext);
 }
+
+export default AuthContext;
