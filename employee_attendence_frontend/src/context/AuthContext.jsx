@@ -22,10 +22,24 @@ const AuthContext = createContext({
   role: DEFAULT_ROLE,
   isAdmin: false,
   error: null,
+  // Legacy/internal names
   loginWithEmailPassword: async (_email, _password) => {},
   loginWithMagicLink: async (_email, _redirectTo) => {},
   logout: async () => {},
   refreshProfileRole: async () => {},
+  // Friendly/public names used by UI components
+  /**
+   * PUBLIC_INTERFACE
+   * signIn(email, password): Promise<{data,error}>
+   * Wrapper around Supabase email/password sign-in.
+   */
+  signIn: async (_email, _password) => {},
+  /**
+   * PUBLIC_INTERFACE
+   * signOut(): Promise<{ error: any|null }>
+   * Wrapper that calls supabase.auth.signOut() and updates state via onAuthStateChange.
+   */
+  signOut: async () => {},
 });
 
 // Safety timeout to avoid hanging loading state if auth state change never arrives
@@ -45,6 +59,7 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(DEFAULT_ROLE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false); // loading state for sign-in/out actions
   const initTimeoutRef = useRef(null);
 
   const deriveRoleFromUser = (u) => {
@@ -158,12 +173,17 @@ export function AuthProvider({ children }) {
    */
   const loginWithEmailPassword = useCallback(async (email, password) => {
     setError(null);
-    const { data, error: signErr } = await supabase.auth.signInWithPassword({ email, password });
-    if (signErr) {
-      setError(signErr);
-      return { data: null, error: signErr };
+    setActionLoading(true);
+    try {
+      const { data, error: signErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (signErr) {
+        setError(signErr);
+        return { data: null, error: signErr };
+      }
+      return { data, error: null };
+    } finally {
+      setActionLoading(false);
     }
-    return { data, error: null };
   }, []);
 
   // PUBLIC_INTERFACE
@@ -174,37 +194,69 @@ export function AuthProvider({ children }) {
    */
   const loginWithMagicLink = useCallback(async (email, redirectTo) => {
     setError(null);
-    const siteUrl =
-      redirectTo ||
-      process.env.REACT_APP_FRONTEND_URL ||
-      (typeof window !== 'undefined' ? window.location.origin : undefined);
-    const { data, error: magicErr } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: siteUrl,
-      },
-    });
-    if (magicErr) {
-      setError(magicErr);
-      return { data: null, error: magicErr };
+    setActionLoading(true);
+    try {
+      const siteUrl =
+        redirectTo ||
+        process.env.REACT_APP_FRONTEND_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : undefined);
+      const { data, error: magicErr } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: siteUrl,
+        },
+      });
+      if (magicErr) {
+        setError(magicErr);
+        return { data: null, error: magicErr };
+      }
+      return { data, error: null };
+    } finally {
+      setActionLoading(false);
     }
-    return { data, error: null };
   }, []);
 
   // PUBLIC_INTERFACE
   /**
    * logout
-   * Signs the current user out.
+   * Signs the current user out using Supabase and lets the auth state subscription clear user/session.
    */
   const logout = useCallback(async () => {
     setError(null);
-    const { error: signOutErr } = await supabase.auth.signOut();
-    if (signOutErr) {
-      setError(signOutErr);
-      return { error: signOutErr };
+    setActionLoading(true);
+    try {
+      const { error: signOutErr } = await supabase.auth.signOut();
+      if (signOutErr) {
+        setError(signOutErr);
+        return { error: signOutErr };
+      }
+      return { error: null };
+    } finally {
+      setActionLoading(false);
     }
-    return { error: null };
   }, []);
+
+  // PUBLIC_INTERFACE
+  /**
+   * signIn - friendly alias for email/password login.
+   */
+  const signIn = useCallback(
+    async (email, password) => {
+      return loginWithEmailPassword(email, password);
+    },
+    [loginWithEmailPassword]
+  );
+
+  // PUBLIC_INTERFACE
+  /**
+   * signOut - friendly alias that calls Supabase signOut() and returns any error.
+   */
+  const signOut = useCallback(async () => {
+    return logout();
+  }, [logout]);
+
+  // Build a minimal profile object to maintain compatibility with components expecting profile.role.
+  const profile = user ? { role } : null;
 
   const contextValue = useMemo(
     () => ({
@@ -218,6 +270,11 @@ export function AuthProvider({ children }) {
       loginWithMagicLink,
       logout,
       refreshProfileRole,
+      // public-friendly names
+      signIn,
+      signOut,
+      actionLoading,
+      profile,
     }),
     [
       loading,
@@ -229,6 +286,9 @@ export function AuthProvider({ children }) {
       loginWithMagicLink,
       logout,
       refreshProfileRole,
+      signIn,
+      signOut,
+      actionLoading,
     ]
   );
 

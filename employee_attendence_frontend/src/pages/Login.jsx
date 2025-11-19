@@ -63,8 +63,12 @@ export default function Login() {
 
     try {
       // Route sign-in through AuthContext for consistent diagnostics and state updates
-      await signIn(email, password);
-
+      const { error: signErr } = await signIn(email, password);
+      if (signErr) {
+        setError(signErr.message || 'Invalid email or password.');
+        setSubmitting(false);
+        return;
+      }
       // On success: redirect to dashboard as the default post-login landing page
       navigate('/dashboard', { replace: true });
     } catch (e2) {

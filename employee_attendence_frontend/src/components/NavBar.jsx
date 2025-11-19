@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import useUserRole from '../hooks/useUserRole';
@@ -13,19 +13,24 @@ import useUserRole from '../hooks/useUserRole';
 // PUBLIC_INTERFACE
 export default function NavBar() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, actionLoading } = useAuth();
   const role = useUserRole();
+  const [localError, setLocalError] = useState('');
 
   const linkBase = 'px-3 py-2 rounded-md text-sm font-medium transition';
   const linkActive = 'bg-blue-50 text-blue-700';
   const linkInactive = 'text-gray-700 hover:bg-gray-50 hover:text-blue-700';
 
   const handleLogout = async () => {
+    setLocalError('');
     try {
-      await signOut();
+      const { error } = await signOut();
+      if (error) {
+        setLocalError(error.message || 'Failed to sign out');
+      }
       navigate('/login', { replace: true });
-    } catch {
-      // Ignore logout error in UI; auth context will reconcile
+    } catch (e) {
+      setLocalError(e?.message || 'Failed to sign out');
       navigate('/login', { replace: true });
     }
   };
@@ -68,8 +73,9 @@ export default function NavBar() {
                 onClick={handleLogout}
                 className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50"
                 aria-label="Logout"
+                disabled={actionLoading}
               >
-                Logout
+                {actionLoading ? 'Signing out…' : 'Logout'}
               </button>
             </>
           ) : (
@@ -83,6 +89,16 @@ export default function NavBar() {
           )}
         </div>
       </div>
+      {localError ? (
+        <div
+          className="mx-auto max-w-7xl px-4 pb-2 text-sm"
+          style={{ color: 'var(--ocean-error)' }}
+          role="status"
+          aria-live="polite"
+        >
+          {localError}
+        </div>
+      ) : null}
     </nav>
   );
 }
