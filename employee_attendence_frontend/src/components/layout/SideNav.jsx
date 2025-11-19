@@ -4,8 +4,9 @@ import { useAuth } from '../../context/AuthContext';
 
 /**
  * Left sidebar navigation with role-aware Admin item.
- * Adds "Leave" as main navigation for all users.
- * Shows "Admin", and nested "Leave Approvals" and "Attendance Viewer" only for admins.
+ * Leaves only: Attendance, Leave, Apply Leave, My Leave History (for all);
+ * Shows Admin and its sub-links only for admins.
+ * Ocean Professional theme is preserved; menu items 'Dashboard', 'Leave Balance', and 'Settings' are removed as requested.
  */
 // PUBLIC_INTERFACE
 export default function SideNav() {
@@ -23,9 +24,7 @@ export default function SideNav() {
   return (
     <aside className="w-60 shrink-0 border-r border-gray-200 bg-white" role="navigation" aria-label="Sidebar">
       <div className="p-3 flex flex-col gap-1">
-        <NavLink to="/dashboard" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          Dashboard
-        </NavLink>
+        {/* Dashboard removed */}
         <NavLink to="/attendance" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           Attendance
         </NavLink>
@@ -38,9 +37,7 @@ export default function SideNav() {
         <NavLink to="/my-leaves" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           My Leave History
         </NavLink>
-        <NavLink to="/leave-balance" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          Leave Balance
-        </NavLink>
+        {/* Leave Balance removed */}
 
         {role === 'admin' ? (
           <>
@@ -61,10 +58,7 @@ export default function SideNav() {
             </NavLink>
           </>
         ) : null}
-
-        <NavLink to="/settings" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          Settings
-        </NavLink>
+        {/* Settings removed */}
       </div>
     </aside>
   );
