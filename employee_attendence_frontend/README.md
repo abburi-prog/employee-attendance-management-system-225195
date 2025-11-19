@@ -9,6 +9,8 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
 - /dashboard → overview and quick components
 - /attendance → clock-in/out with today's status and history (filters, pagination)
 - /admin → KPIs, attendance overview table with filters/search/export, employees list (visible only if role === 'admin')
+- /admin/leaves → Admin Leave Approvals (list, approve/deny with confirmation and toasts)
+- /admin/attendance → Admin Attendance Viewer (user search/autocomplete, date range filters, table + pagination)
 - /settings → feature flags placeholder
 - /not-authorized → friendly message for restricted access
 
@@ -23,6 +25,7 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
 ## Data Layer and Mock/API Mode
 
 - services/attendanceService.js reads REACT_APP_API_BASE. If not set, runs in MOCK mode using in-memory arrays.
+- services/adminService.js reads REACT_APP_API_BASE or REACT_APP_BACKEND_URL. If both are missing or backend unreachable, it runs in MOCK mode and shows a toast.
 - Functions:
   - getTodayStatus, clockIn, clockOut
   - getAttendanceHistory
@@ -75,6 +78,7 @@ REACT_APP_SUPABASE_URL=
 REACT_APP_SUPABASE_KEY=
 REACT_APP_FRONTEND_URL=http://localhost:3000
 REACT_APP_API_BASE=   # if empty → mock mode; if set → API mode (e.g., http://localhost:4000)
+REACT_APP_BACKEND_URL=  # optional alternative base; adminService falls back to this if provided
 REACT_APP_FEATURE_FLAGS={}
 ```
 

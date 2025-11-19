@@ -15,6 +15,9 @@ import MyLeaveHistory from "./pages/MyLeaveHistory";
 import AdminLeaveDashboard from "./pages/AdminLeaveDashboard";
 import LeaveBalance from "./pages/LeaveBalance";
 import Login from "./pages/Login";
+import AdminDashboardShell from "./pages/admin/AdminDashboard";
+import LeaveApprovals from "./pages/admin/LeaveApprovals";
+import AttendanceViewer from "./pages/admin/AttendanceViewer";
 
 /**
  * Routing contract (temporary diagnostic mode):
@@ -90,8 +93,17 @@ function AppShell() {
                 <Route path="/apply-leave" element={<ApplyLeave />} />
                 <Route path="/my-leaves" element={<MyLeaveHistory />} />
                 <Route path="/leave-balance" element={<LeaveBalance />} />
+                {/* Legacy admin pages retained */}
                 <Route path="/admin/leaves" element={<AdminLeaveDashboard />} />
                 <Route path="/admin" element={<Admin />} />
+
+                {/* New Admin Dashboard Shell with nested routes */}
+                <Route path="/admin/*" element={<AdminDashboardShell />}>
+                  <Route index element={<Navigate to="/admin/leaves" replace />} />
+                  <Route path="leaves" element={<LeaveApprovals />} />
+                  <Route path="attendance" element={<AttendanceViewer />} />
+                </Route>
+
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/not-authorized" element={<NotAuthorized />} />
               </Route>
