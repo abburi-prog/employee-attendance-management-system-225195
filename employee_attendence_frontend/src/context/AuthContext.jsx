@@ -244,19 +244,29 @@ export function AuthProvider({ children }) {
    * logout
    * Signs the current user out using Supabase and lets the auth state subscription clear user/session.
    */
+  /**
+   * Aggressively clear all known Supabase auth artifacts from localStorage, sessionStorage, and cookies.
+   * - Supabase keys usually start with 'sb-' or contain 'supabase'
+   * - This avoids sticky auth bugs on sign-out in v2+
+   */
   const clearLocalAuthArtifacts = () => {
     try {
-      // Supabase v2 commonly uses keys starting with 'sb-' in localStorage
-      Object.keys(window.localStorage).forEach((k) => {
-        if (k.startsWith('sb-') || k.includes('supabase')) {
+      // Supabase v2 uses keys like 'sb-<projectRef>-auth-token' in localStorage and sessionStorage
+      [...Object.keys(window.localStorage), ...Object.keys(window.sessionStorage)].forEach((k) => {
+        if (
+          k.startsWith('sb-') ||
+          k.toLowerCase().includes('supabase') ||
+          k === 'supabase.auth.token'
+        ) {
           window.localStorage.removeItem(k);
+          window.sessionStorage.removeItem(k);
         }
       });
     } catch {
       // ignore
     }
     try {
-      // Best-effort cookie clearing (path/domain scope may vary)
+      // Clear all cookies (best effort), this covers sb-* if saved as cookie
       document.cookie
         .split(';')
         .map((c) => c.trim())
@@ -267,6 +277,14 @@ export function AuthProvider({ children }) {
         });
     } catch {
       // ignore
+    }
+    // Try indexedDB cleanup if Supabase ever used it (Supabase v2+ may do this)
+    if (window.indexedDB && window.indexedDB.deleteDatabase) {
+      try {
+        window.indexedDB.deleteDatabase('supabase-auth-cache');
+      } catch {
+        // ignore
+      }
     }
   };
 
@@ -289,32 +307,26 @@ export function AuthProvider({ children }) {
     setError(null);
     setActionLoading(true);
     try {
-      const { error: signOutErr } = await supabase.auth.signOut({ scope: 'global' });
-      // Clear local state aggressively to avoid stale closures
+      // Always attempt Supabase signOut, ignore error if any
+      await supabase.auth.signOut({ scope: 'global' });
+
+      // Clear React app state immediately to avoid stale closures
       setSession(null);
       setUser(null);
       setRole(DEFAULT_ROLE);
       setLoading(false);
+
+      // Clean all storage and cookies
       clearLocalAuthArtifacts();
 
-      if (signOutErr) {
-        setError(signOutErr);
-        // Hard redirect to ensure no SPA cache issues
-        hardSignOut();
-        return { error: signOutErr };
-      }
-
-      // Ensure navigation resets; avoid SPA cache if any persisted session remains
-      try {
-        window.location.assign('/login');
-      } catch {
-        window.location.href = '/login';
-      }
+      // Hard redirect to /login (with replace, not assign, to fix SPA history)
+      window.location.replace('/login');
       return { error: null };
     } catch (e) {
       setError(e);
       // Fallback: force clear and reload
-      hardSignOut();
+      clearLocalAuthArtifacts();
+      window.location.replace('/login');
       return { error: e };
     } finally {
       setActionLoading(false);

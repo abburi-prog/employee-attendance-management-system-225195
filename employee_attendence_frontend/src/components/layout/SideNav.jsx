@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 
 /**
  * Left sidebar navigation with role-aware Admin item.
+ * Adds "Leave" as main navigation for all users.
  * Shows "Admin", and nested "Leave Approvals" and "Attendance Viewer" only for admins.
  */
 // PUBLIC_INTERFACE
@@ -27,6 +28,18 @@ export default function SideNav() {
         </NavLink>
         <NavLink to="/attendance" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           Attendance
+        </NavLink>
+        <NavLink to="/leave" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          Leave
+        </NavLink>
+        <NavLink to="/apply-leave" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          Apply Leave
+        </NavLink>
+        <NavLink to="/my-leaves" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          My Leave History
+        </NavLink>
+        <NavLink to="/leave-balance" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          Leave Balance
         </NavLink>
 
         {role === 'admin' ? (

@@ -21,12 +21,13 @@ import LeaveApprovals from "./pages/admin/LeaveApprovals";
 import AttendanceViewer from "./pages/admin/AttendanceViewer";
 import AdminRoute from './routes/AdminRoute';
 import Account from "./pages/Account";
+import Leave from "./pages/Leave"; // NEW
 
 /**
  * Routing contract (temporary diagnostic mode):
  * - "/" → redirects to "/login"
  * - "/login" is public (standalone, not wrapped by Layout)
- * - Protected routes: /dashboard, /attendance, /apply-leave, /my-leaves, /leave-balance, /settings
+ * - Protected routes: /dashboard, /attendance, /apply-leave, /my-leaves, /leave-balance, /settings, /leave (NEW)
  * - Admin-only: /admin, /admin/leaves, /admin/attendance (all gated by <AdminRoute />)
  * - No catch-all ("*") route to avoid unexpected redirects during diagnosis
  */
@@ -154,6 +155,7 @@ function AppShell() {
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/attendance" element={<Attendance />} />
+                <Route path="/leave" element={<Leave />} /> {/* NEW Leave route */}
                 <Route path="/apply-leave" element={<ApplyLeave />} />
                 <Route path="/my-leaves" element={<MyLeaveHistory />} />
                 <Route path="/leave-balance" element={<LeaveBalance />} />
@@ -176,9 +178,9 @@ function AppShell() {
               </Route>
             </Route>
 
-            {/*
+            {/* 
               Temporary diagnostic change:
-              - Catch-all wildcard route removed to prevent unwanted redirects (e.g., loops or blank screens).
+              - Catch-all wildcard route removed to prevent unwanted redirects (e.g., loops or blank screens). 
               - AuthBoundaryRedirect is intentionally not used for now.
             */}
           </Routes>
