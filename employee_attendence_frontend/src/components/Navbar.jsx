@@ -79,6 +79,16 @@ export default function Navbar() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Always show Sign In that routes to /login */}
+          <Link
+            to="/login"
+            className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50"
+            aria-label="Sign in"
+          >
+            Sign In
+          </Link>
+
+          {/* Keep existing signed-in indicators and Sign Out button logic */}
           {user ? (
             <>
               <span className="text-sm text-gray-600" aria-label="Signed in user">
@@ -95,15 +105,7 @@ export default function Navbar() {
                 {enableLogout && actionLoading ? 'Signing out…' : 'Logout'}
               </button>
             </>
-          ) : (
-            <Link
-              to="/login"
-              className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50"
-              aria-label="Sign in"
-            >
-              Sign In
-            </Link>
-          )}
+          ) : null}
         </div>
       </div>
 
