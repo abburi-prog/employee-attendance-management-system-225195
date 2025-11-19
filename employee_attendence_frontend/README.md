@@ -29,6 +29,14 @@ REACT_APP_ENABLE_LOGOUT=true
 npm start
 ```
 
+## Account Page and Profile Menu
+
+- Account page (`/account`): A protected route showing the signed-in user's basic information (email and role) with placeholders for future settings. Accessible only to authenticated users.
+- Profile menu in Navbar: When signed in, the top Navbar shows a circular avatar button. Clicking it opens a dropdown with:
+  - Account: navigates to `/account`
+  - Logout: signs out via `AuthContext.signOut()` (respects `REACT_APP_ENABLE_LOGOUT` feature flag)
+- The "Sign In" button remains always visible in the Navbar per requirement.
+
 ## Feature Flags
 
 - REACT_APP_ENABLE_LOGOUT

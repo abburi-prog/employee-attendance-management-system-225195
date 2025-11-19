@@ -20,6 +20,7 @@ import AdminDashboardShell from "./pages/admin/AdminDashboard";
 import LeaveApprovals from "./pages/admin/LeaveApprovals";
 import AttendanceViewer from "./pages/admin/AttendanceViewer";
 import AdminRoute from './routes/AdminRoute';
+import Account from "./pages/Account";
 
 /**
  * Routing contract (temporary diagnostic mode):
@@ -157,6 +158,7 @@ function AppShell() {
                 <Route path="/my-leaves" element={<MyLeaveHistory />} />
                 <Route path="/leave-balance" element={<LeaveBalance />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/account" element={<Account />} />
                 <Route path="/not-authorized" element={<NotAuthorized />} />
 
                 {/* Admin-only routes gated by AdminRoute */}
