@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 /**
  * Leave Page
@@ -18,8 +19,11 @@ const theme = {
   text: "#111827"
 };
 
-// PUBLIC_INTERFACE
+/** PUBLIC_INTERFACE
+ * Leave page, now allows request leave via navigation.
+ */
 export default function Leave() {
+  const navigate = useNavigate();
   return (
     <div
       style={{
@@ -80,7 +84,9 @@ export default function Leave() {
               cursor: "pointer",
               transition: "box-shadow .18s, background .18s",
             }}
-            onClick={() => alert('Request Leave (placeholder action)')}
+            onClick={() => {
+              navigate("/apply-leave");
+            }}
             aria-label="Request Leave"
           >
             Request Leave
