@@ -15,12 +15,27 @@ const LEAVE_TYPES = [
 const accentColor = "#2563EB"; // ocean blue
 const errorColor = "#EF4444";
 
-// PUBLIC_INTERFACE
 /**
- * Checks if required Supabase variables are missing.
+ * Dynamically checks for required Supabase env variables at runtime – supports CRA, Netlify, Vercel, Docker, etc.
+ * Looks for process.env, window._env_ (Netlify Docker pattern), and window.ENV.
  */
 function isSupabaseEnvMissing() {
-  return !process.env.REACT_APP_SUPABASE_URL || !process.env.REACT_APP_SUPABASE_KEY;
+  // Try resolving env vars as runtime properties (browser) as well as build time (Node/CRA).
+  let url = undefined, key = undefined;
+  if (typeof window !== "undefined") {
+    url =
+      (window._env_ && window._env_.REACT_APP_SUPABASE_URL) ||
+      (window.ENV && window.ENV.REACT_APP_SUPABASE_URL) ||
+      (window.process && window.process.env && window.process.env.REACT_APP_SUPABASE_URL);
+    key =
+      (window._env_ && window._env_.REACT_APP_SUPABASE_KEY) ||
+      (window.ENV && window.ENV.REACT_APP_SUPABASE_KEY) ||
+      (window.process && window.process.env && window.process.env.REACT_APP_SUPABASE_KEY);
+  }
+  // Fallback to build-time env (works in some tools)
+  url = url || process.env.REACT_APP_SUPABASE_URL;
+  key = key || process.env.REACT_APP_SUPABASE_KEY;
+  return !(url && key);
 }
 
 // PUBLIC_INTERFACE
@@ -126,6 +141,7 @@ const ApplyLeaveForm = ({ onSuccess }) => {
   };
 
   // PUBLIC_INTERFACE
+  // PUBLIC_INTERFACE
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSupabaseError(null);
@@ -138,50 +154,91 @@ const ApplyLeaveForm = ({ onSuccess }) => {
 
     setSubmitting(true);
 
-    // Preferred: Submit into Supabase
-    if (!supabaseMissing && supabase) {
+    // Utility: timeout promise helper
+    function timeoutPromise(ms, ctrl) {
+      return new Promise((_, reject) =>
+        setTimeout(() => {
+          if (ctrl) ctrl.abort();
+          reject(new Error("Request timed out"));
+        }, ms)
+      );
+    }
+
+    // Preferred: Submit into Supabase with explicit timeout (AbortController, 8s)
+    if (!supabaseMissing && supabase && typeof supabase.from === "function") {
+      let abortController;
       try {
+        // If fetch is used in supabase-js, use AbortController for modern browsers.
+        if (typeof window !== "undefined" && window.AbortController) {
+          abortController = new window.AbortController();
+        }
         const { userId, userEmail } = await getCurrentUserInfo(supabase, contextUser);
 
-        // Insert row into leave_requests: always supply all needed cols (status is 'pending', user_id if present)
-        const { data, error } = await supabase
-          .from("leave_requests")
-          .insert([
-            {
-              user_id: userId || null,
-              start_date: fields.startDate,
-              end_date: fields.endDate,
-              leave_type: fields.leaveType,
-              reason: fields.reason,
-              status: "pending",
-              created_at: new Date().toISOString(),
-            }
-          ])
-          .select();
+        // Assemble Supabase insert with explicit timeout race
+        const insertPromise =
+          supabase
+            .from("leave_requests")
+            .insert([
+              {
+                user_id: userId || null,
+                start_date: fields.startDate,
+                end_date: fields.endDate,
+                leave_type: fields.leaveType,
+                reason: fields.reason,
+                status: "pending",
+                created_at: new Date().toISOString(),
+              }
+            ])
+            .select();
+
+        // Race insert with timeout (8s)
+        let data, error;
+        try {
+          ({ data, error } = await Promise.race([
+            insertPromise,
+            timeoutPromise(8000, abortController)
+          ]));
+        } catch (raceErr) {
+          if (raceErr.message && raceErr.message.includes("timed out")) {
+            setSupabaseError("Network timeout: Supabase did not respond. Please try again or check internet connection.");
+            show({ type: "error", message: "Timeout: Supabase did not respond. Check your connection or try later." });
+          } else if (raceErr.name === "AbortError" || raceErr.message === "The operation was aborted.") {
+            setSupabaseError("The request was aborted (timeout). Try again.");
+            show({ type: "error", message: "Request aborted (timeout). Try again." });
+          } else {
+            setSupabaseError(`Network error: ${raceErr.message || "Unknown error"}`);
+            show({ type: "error", message: `Network error: ${raceErr?.message || "Unknown"}` });
+          }
+          return;
+        }
 
         if (error) {
           setSupabaseError(error.message);
           show({ type: "error", message: `Leave not submitted: ${error.message}` });
-          setSubmitting(false);
           return;
         }
         show({ type: "success", message: "Leave request submitted successfully!" });
         if (onSuccess && typeof onSuccess === "function") onSuccess(data?.[0] || {});
         resetForm();
-        setSubmitting(false);
         return;
       } catch (err) {
-        setSupabaseError(err?.message || "Unknown error");
-        show({
-          type: "error",
-          message: `Could not submit leave: ${err?.message || "Unknown error"}`,
-        });
-        setSubmitting(false);
+        if (err?.name === "AbortError" || (err?.message && err.message.includes("aborted"))) {
+          setSupabaseError("Request aborted or timed out.");
+          show({ type: "error", message: "Submission aborted or timed out." });
+        } else {
+          setSupabaseError(err?.message || "Unknown error");
+          show({
+            type: "error",
+            message: `Could not submit leave: ${err?.message || "Unknown error"}`,
+          });
+        }
         return;
+      } finally {
+        setSubmitting(false);
       }
     }
 
-    // Fallback: LocalStorage (only if env missing or client missing)
+    // Fallback: LocalStorage (only if env missing or supabase client not present)
     try {
       const key = "local_leave_requests";
       const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
@@ -200,13 +257,13 @@ const ApplyLeaveForm = ({ onSuccess }) => {
       });
       if (onSuccess && typeof onSuccess === "function") onSuccess(localRecord);
       resetForm();
-      setSubmitting(false);
     } catch (err) {
       setSupabaseError(`Could not save leave locally: ${err.message || ""}`);
       show({
         type: "error",
         message: `Could not store leave locally: ${err?.message || "Unknown error"}`,
       });
+    } finally {
       setSubmitting(false);
     }
   };
