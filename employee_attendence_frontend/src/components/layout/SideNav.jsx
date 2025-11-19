@@ -4,9 +4,9 @@ import { useAuth } from '../../context/AuthContext';
 
 /**
  * Left sidebar navigation with role-aware Admin item.
- * Leaves only: Attendance, Leave, Apply Leave, My Leave History (for all);
+ * Includes: Attendance, Leave, Apply Leave, My Leave History (for all users);
  * Shows Admin and its sub-links only for admins.
- * Ocean Professional theme is preserved; menu items 'Dashboard', 'Leave Balance', and 'Settings' are removed as requested.
+ * Ocean Professional theme is preserved.
  */
 // PUBLIC_INTERFACE
 export default function SideNav() {
@@ -37,7 +37,6 @@ export default function SideNav() {
         <NavLink to="/my-leaves" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           My Leave History
         </NavLink>
-        {/* Leave Balance removed */}
 
         {role === 'admin' ? (
           <>
@@ -58,7 +57,6 @@ export default function SideNav() {
             </NavLink>
           </>
         ) : null}
-        {/* Settings removed */}
       </div>
     </aside>
   );
