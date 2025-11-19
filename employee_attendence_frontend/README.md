@@ -27,24 +27,29 @@ npm start
 
 ## Supabase Auth
 
-- Client initialized at `src/supabase/client.js`
+- Client initialized at `src/supabase/client.js` (singleton; import from `src/supabase/client` or `src/supabase.js`).
 - `AuthProvider` at `src/context/AuthContext.jsx`:
   - Subscribes to `supabase.auth.onAuthStateChange`
   - Exposes:
-    - user, session, loading, profile (optional)
-    - signIn(email, password), signOut()
-  - Derives role from:
+    - user, session, loading, profile (role), actionLoading
+    - signIn(email, password)
+    - signUp(email, password) with `emailRedirectTo` using `REACT_APP_FRONTEND_URL`
+    - signOut() → calls `supabase.auth.signOut({ scope: 'global' })`, clears storage, redirects to `/login`
+    - loginWithMagicLink(email, redirectTo?) uses `supabase.auth.signInWithOtp`
+  - Role resolution:
     1. user.app_metadata.role or user.user_metadata.role
     2. Fallback: profiles table (id = auth.users.id) with `role` field
     3. Default: `employee`
 
 - Login page at `src/pages/Login.jsx`:
   - Email/password sign-in
-  - Redirects to `/dashboard` on success
+  - Optional magic-link sender
+  - Redirects to `/` or `?returnTo=/path` on success
+  - Minimal error/loading messaging
 
-- Navbar at `src/components/Navbar.jsx` and `src/components/NavBar.jsx`:
+- Navbar at `src/components/Navbar.jsx`:
   - Shows Login when not authenticated
-  - Shows Logout and user email when authenticated
+  - Logout button calls context `signOut()` (hard-redirect to `/login`)
   - Hides Admin links when role !== 'admin'
 
 ## Route Guards

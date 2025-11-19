@@ -36,6 +36,12 @@ const AuthContext = createContext({
   signIn: async (_email, _password) => {},
   /**
    * PUBLIC_INTERFACE
+   * signUp(email, password): Promise<{data,error}>
+   * Wrapper around Supabase email/password sign-up.
+   */
+  signUp: async (_email, _password) => {},
+  /**
+   * PUBLIC_INTERFACE
    * signOut(): Promise<{ error: any|null }>
    * Wrapper that calls supabase.auth.signOut() and updates state via onAuthStateChange.
    */
@@ -328,6 +334,37 @@ export function AuthProvider({ children }) {
 
   // PUBLIC_INTERFACE
   /**
+   * signUp - email/password signup helper with redirect support.
+   */
+  const signUp = useCallback(async (email, password) => {
+    setError(null);
+    setActionLoading(true);
+    try {
+      const siteUrl =
+        process.env.REACT_APP_FRONTEND_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : undefined);
+      const { data, error: signUpErr } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: siteUrl,
+        },
+      });
+      if (signUpErr) {
+        setError(signUpErr);
+        return { data: null, error: signUpErr };
+      }
+      return { data, error: null };
+    } catch (e) {
+      setError(e);
+      return { data: null, error: e };
+    } finally {
+      setActionLoading(false);
+    }
+  }, []);
+
+  // PUBLIC_INTERFACE
+  /**
    * signOut - friendly alias that calls Supabase signOut() and returns any error.
    */
   const signOut = useCallback(async () => {
@@ -351,6 +388,7 @@ export function AuthProvider({ children }) {
       refreshProfileRole,
       // public-friendly names
       signIn,
+      signUp,
       signOut,
       actionLoading,
       profile,

@@ -51,7 +51,8 @@ REACT_APP_FRONTEND_URL=http://localhost:3000
 
 - Login page (`src/pages/Login.jsx`):
   - Email/password sign-in via `useAuth().signIn`.
-  - Redirects to `/dashboard` on success, blocks form while authenticated.
+  - Optional magic link via `useAuth().loginWithMagicLink(email, redirectTo?)` (uses REACT_APP_FRONTEND_URL as default redirect).
+  - Redirects to `/` or `?returnTo=/path` on success, blocks form while authenticated.
 
 - Protected routes (`src/App.js`):
   - `ProtectedRoute` redirects to `/login` when `user === null`.

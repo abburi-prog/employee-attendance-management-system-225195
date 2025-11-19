@@ -125,8 +125,12 @@ function AppShell() {
       <ThemeProvider>
         <ToastProvider>
           <Routes>
-            {/* Force "/" to redirect to "/login" */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            {/* Root path can be a protected dashboard; unauthenticated will be sent to /login via guards */}
+            <Route path="/" element={<ProtectedRoute />}>
+              <Route element={<Layout />}>
+                <Route index element={<Navigate to="/dashboard" replace />} />
+              </Route>
+            </Route>
 
             {/* Public route: Login is standalone (no Layout) */}
             <Route element={<PublicOnlyRoute />}>
