@@ -2,16 +2,25 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
-import DateRangePicker from "./ui/DateRangePicker";
 import { useToast } from "./ToastProvider";
 
 /**
  * PUBLIC_INTERFACE
- * ApplyLeaveForm - Leave application form component
- *
+ * ApplyLeaveForm - Leave application form component for submitting employee leave requests.
+ * 
  * Props:
  *   onSuccess: function({submittedObject}) - called after successful submission.
+ * 
+ * This component robustly handles:
+ * - Backend URL detection (REACT_APP_API_BASE preferred, REACT_APP_BACKEND_URL fallback)
+ * - Auth token propagation (from localStorage "token", injected if present)
+ * - Error differentiation (network, validation, unauthorized, generic backend or local fallback)
+ * - Graceful fallback to localStorage if backend is not configured
+ * - Clean UI feedback via a toast provider
+ * 
+ * Code style and accents use "Ocean Professional" theme.
  */
+
 const LEAVE_TYPES = [
   { value: "Annual", label: "Annual" },
   { value: "Sick", label: "Sick" },
@@ -19,68 +28,98 @@ const LEAVE_TYPES = [
   { value: "Other", label: "Other" },
 ];
 
-// Ocean Professional theme accents
 const accentColor = "#2563EB"; // blue
-const accentAmber = "#F59E0B";
 const errorColor = "#EF4444";
 
 function getApiBase() {
+  // Prefer explicit API base URL, fallback to BACKEND URL, or return empty string (fallback path)
   return (
-    process.env.REACT_APP_API_BASE ||
-    process.env.REACT_APP_BACKEND_URL ||
+    (process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim()) ||
+    (process.env.REACT_APP_BACKEND_URL && process.env.REACT_APP_BACKEND_URL.trim()) ||
     ""
   );
 }
 
-/**
- * Submits leave request.
- * If backend is not available, stores in localStorage.
- */
-async function submitLeaveRequest(data) {
+// PUBLIC_INTERFACE
+async function submitLeaveRequest(data, token) {
   const apiBase = getApiBase();
   if (apiBase) {
-    // Try POST to /api/leave, fallback /leave-requests if 404
-    let endpoints = [
-      `${apiBase.replace(/\/$/, "")}/api/leave`,
+    // POST to /leave/apply (preferred), fallback to /api/leave or /leave-requests for compatibility
+    const endpointCandidates = [
+      `${apiBase.replace(/\/$/, "")}/leave/apply`,
       `${apiBase.replace(/\/$/, "")}/leave-requests`,
+      `${apiBase.replace(/\/$/, "")}/api/leave`,
     ];
-    for (const url of endpoints) {
+    for (const url of endpointCandidates) {
       try {
         const res = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(data),
         });
-        if (res.ok) return { success: true };
-      } catch (e) {
-        // Try next endpoint or fallback
-        // ignore for now
+        // Handle specific status codes according to requirements
+        if (res.ok) {
+          return { success: true, record: await res.json(), endpoint: url };
+        }
+        if (res.status === 401) {
+          return {
+            success: false,
+            error: "Unauthorized: Your session may have expired. Please sign in again.",
+            status: 401,
+          };
+        }
+        if (res.status === 400) {
+          let errText = "Validation failed.";
+          try {
+            const j = await res.json();
+            if (j && typeof j.error === "string") errText = j.error;
+            else if (typeof j === "string") errText = j;
+          } catch {}
+          return { success: false, error: errText, status: 400 };
+        }
+        // If not found, try next endpoint; else generic failure
+        if (res.status === 404) continue;
+        // All other backend errors
+        return {
+          success: false,
+          error: `Backend error (${res.status || "unknown"}).`,
+          status: res.status,
+        };
+      } catch (err) {
+        if (err.name === "TypeError" && err.message && err.message.match(/fetch/)) {
+          return {
+            success: false,
+            error: "Network error: Cannot contact backend. Please check your connection or try again later.",
+            network: true,
+          };
+        }
+        // Try the next candidate
       }
     }
-    // Backend is configured, but failed
+    // Backend configured, but none worked
     return {
       success: false,
-      error:
-        "Failed to submit leave request. Please contact administrator or try later.",
+      error: "Failed to submit leave request. Please contact administrator or try later.",
     };
   }
-  // Graceful fallback: save to localStorage
-  const pendingRequests =
-    JSON.parse(localStorage.getItem("local_leave_requests") || "[]");
-  pendingRequests.push({
+  // Fallback to localStorage for demos/dev/when backend not set
+  const key = "local_leave_requests";
+  const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
+  const localRecord = {
     ...data,
     storedAt: new Date().toISOString(),
     id: Math.random().toString(36).substring(2),
-  });
-  localStorage.setItem(
-    "local_leave_requests",
-    JSON.stringify(pendingRequests)
-  );
+    status: "pending",
+  };
+  pendingRequests.push(localRecord);
+  localStorage.setItem(key, JSON.stringify(pendingRequests));
   return {
     success: true,
     local: true,
+    record: localRecord,
   };
 }
 
@@ -90,10 +129,6 @@ function formatDate(date) {
   return d.toISOString().slice(0, 10);
 }
 
-/**
- * Validates leave form fields.
- * Returns an errors object.
- */
 function validate({ startDate, endDate, leaveType, reason }) {
   const errors = {};
   if (!startDate) errors.startDate = "Start date is required.";
@@ -121,6 +156,18 @@ const ApplyLeaveForm = ({ onSuccess }) => {
   const [submitting, setSubmitting] = useState(false);
   const { show } = useToast();
 
+  // Reset all field and error values
+  const resetForm = () => {
+    setFields({
+      startDate: "",
+      endDate: "",
+      leaveType: "",
+      reason: "",
+    });
+    setErrors({});
+  };
+
+  // Update form field logic
   const onFieldChange = (name, value) => {
     setFields((old) => ({
       ...old,
@@ -132,18 +179,10 @@ const ApplyLeaveForm = ({ onSuccess }) => {
     }));
   };
 
-  const resetForm = () => {
-    setFields({
-      startDate: "",
-      endDate: "",
-      leaveType: "",
-      reason: "",
-    });
-    setErrors({});
-  };
-
+  // PUBLIC_INTERFACE
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Client-side validation
     const validation = validate(fields);
     setErrors(validation);
     if (Object.keys(validation).length > 0) {
@@ -151,13 +190,20 @@ const ApplyLeaveForm = ({ onSuccess }) => {
       return;
     }
     setSubmitting(true);
-    const result = await submitLeaveRequest({
+
+    // Grab session token for auth, if set
+    const token = localStorage.getItem("token");
+
+    // Compose request object
+    const payload = {
       ...fields,
       startDate: formatDate(fields.startDate),
       endDate: formatDate(fields.endDate),
       leaveType: fields.leaveType,
       reason: fields.reason.trim(),
-    });
+    };
+
+    const result = await submitLeaveRequest(payload, token);
     setSubmitting(false);
 
     if (result.success) {
@@ -166,13 +212,25 @@ const ApplyLeaveForm = ({ onSuccess }) => {
         message:
           "Leave request submitted successfully." +
           (result.local
-            ? " (Stored temporarily, not yet sent to backend!)"
+            ? " (Stored locally – not sent to backend!)"
             : ""),
       });
       if (typeof onSuccess === "function") {
-        onSuccess(fields);
+        onSuccess(result.record);
       }
       resetForm();
+    } else if (result.status === 401) {
+      show({
+        type: "error",
+        message: result.error || "Unauthorized: Your session may have expired. Please sign in again.",
+      });
+    } else if (result.status === 400) {
+      show({
+        type: "error",
+        message: "Validation error: " + (result.error || ""),
+      });
+    } else if (result.network) {
+      show({ type: "error", message: result.error });
     } else {
       show({
         type: "error",
@@ -181,7 +239,7 @@ const ApplyLeaveForm = ({ onSuccess }) => {
     }
   };
 
-  // Responsive form card
+  // Form UI with accent color and clear errors
   return (
     <Card
       style={{
@@ -207,7 +265,6 @@ const ApplyLeaveForm = ({ onSuccess }) => {
         onSubmit={handleSubmit}
         autoComplete="off"
       >
-        {/* Start/End date pickers */}
         <div className="mb-4">
           <label className="block text-sm mb-1 font-medium" htmlFor="startDate">
             Start Date
