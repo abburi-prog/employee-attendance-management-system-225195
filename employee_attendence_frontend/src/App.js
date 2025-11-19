@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import './App.css';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -36,7 +36,28 @@ function ProtectedRoute() {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  // Safety timer: if auth doesn't resolve quickly, fail-safe to login
+  const [timedOut, setTimedOut] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (loading && !timerRef.current) {
+      timerRef.current = setTimeout(() => setTimedOut(true), 3000);
+    }
+    if (!loading) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      setTimedOut(false);
+    }
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [loading]);
+
+  if (loading && !timedOut) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
         <span className="text-sm text-gray-600">Loading…</span>
@@ -44,9 +65,11 @@ function ProtectedRoute() {
     );
   }
 
-  if (!user) {
+  // If timed out and still no user, default to login
+  if ((!user && (timedOut || !loading)) || (!user && !loading)) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
+
   return <Outlet />;
 }
 
@@ -56,14 +79,37 @@ function ProtectedRoute() {
 function PublicOnlyRoute() {
   const { user, loading } = useAuth();
 
-  if (loading) {
+  const [timedOut, setTimedOut] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (loading && !timerRef.current) {
+      timerRef.current = setTimeout(() => setTimedOut(true), 3000);
+    }
+    if (!loading) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      setTimedOut(false);
+    }
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [loading]);
+
+  // If authenticated, do not allow /login
+  if (!loading && user) return <Navigate to="/dashboard" replace />;
+
+  // While loading, but timed out, still allow access to the public page
+  if (loading && !timedOut) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
         <span className="text-sm text-gray-600">Loading…</span>
       </div>
     );
   }
-  if (user) return <Navigate to="/dashboard" replace />;
 
   return <Outlet />;
 }
