@@ -25,6 +25,19 @@ Optional (existing):
 npm start
 ```
 
+### Feature flags
+
+Sign-out behavior is controlled via `REACT_APP_FEATURE_FLAGS`.
+
+- Default: sign-out is disabled to prevent accidental logouts in this environment.
+- To enable sign-out, set the feature flag in your `.env`:
+  ```
+  REACT_APP_FEATURE_FLAGS=enable_sign_out=true
+  ```
+  You can combine multiple flags as a comma-separated list if needed.
+
+When disabled, clicking the "Logout" button does nothing and shows a tooltip: "Sign-out disabled in this environment".
+
 ## Supabase Auth
 
 - Client initialized at `src/supabase/client.js` (singleton; import from `src/supabase/client` or `src/supabase.js`).
@@ -49,7 +62,8 @@ npm start
 
 - Navbar at `src/components/Navbar.jsx`:
   - Shows Login when not authenticated
-  - Logout button calls context `signOut()` (hard-redirect to `/login`)
+  - Logout button UI is visible, but the click is intentionally a no-op by default (no navigation/state clearing)
+  - To enable actual sign-out behavior, add `enable_sign_out=true` to `REACT_APP_FEATURE_FLAGS` in `.env` (see below)
   - Hides Admin links when role !== 'admin'
 
 ## Route Guards

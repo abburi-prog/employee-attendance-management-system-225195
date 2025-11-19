@@ -18,11 +18,24 @@ export default function Navbar() {
   const role = useUserRole();
   const [localError, setLocalError] = useState('');
 
+  // Feature flag to control whether clicking "Logout" actually performs sign-out.
+  // Set to true to re-enable sign-out behavior.
+  const SIGN_OUT_ENABLED =
+    (process.env.REACT_APP_FEATURE_FLAGS || '').toLowerCase().includes('enable_sign_out=true') ||
+    false;
+
   const linkBase = 'px-3 py-2 rounded-md text-sm font-medium transition';
   const linkActive = 'bg-blue-50 text-blue-700';
   const linkInactive = 'text-gray-700 hover:bg-gray-50 hover:text-blue-700';
 
-  const handleLogout = async () => {
+  const handleLogout = async (e) => {
+    // If disabled, swallow click and present a non-intrusive note; don't clear any state or navigate.
+    if (!SIGN_OUT_ENABLED) {
+      e?.preventDefault?.();
+      setLocalError('Sign-out disabled in this environment');
+      return;
+    }
+
     setLocalError('');
     try {
       const { error } = await signOut();
@@ -73,9 +86,11 @@ export default function Navbar() {
                 onClick={handleLogout}
                 className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50"
                 aria-label="Logout"
-                disabled={actionLoading}
+                // Keep the UI enabled to preserve look/feel; disable only during real sign-out actionLoading
+                disabled={SIGN_OUT_ENABLED && actionLoading}
+                title={!SIGN_OUT_ENABLED ? 'Sign-out disabled in this environment' : undefined}
               >
-                {actionLoading ? 'Signing out…' : 'Logout'}
+                {SIGN_OUT_ENABLED && actionLoading ? 'Signing out…' : 'Logout'}
               </button>
             </>
           ) : (
@@ -89,7 +104,7 @@ export default function Navbar() {
           )}
         </div>
       </div>
-      {localError ? (
+      {localError && !SIGN_OUT_ENABLED ? (
         <div
           className="mx-auto max-w-7xl px-4 pb-2 text-sm"
           style={{ color: 'var(--ocean-error)' }}
