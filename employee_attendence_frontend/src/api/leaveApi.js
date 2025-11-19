@@ -1,4 +1,4 @@
-import { supabase } from "../supabase";
+import supabase from "../supabase/client";
 
 /**
  * Helper to get current user safely. Returns { user: null } if unauthenticated or on error.

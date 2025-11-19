@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(DEFAULT_ROLE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [actionLoading, setActionLoading] = useState(false); // loading state for sign-in/out actions
+  const [actionLoading, setActionLoading] = useState(false);
   const initTimeoutRef = useRef(null);
 
   const deriveRoleFromUser = (u) => {
@@ -83,7 +83,6 @@ export function AuthProvider({ children }) {
         .maybeSingle();
 
       if (dbErr) {
-        // eslint-disable-next-line no-console
         console.warn('Failed to read profile role:', dbErr.message);
         return null;
       }
@@ -92,7 +91,6 @@ export function AuthProvider({ children }) {
       }
       return null;
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.warn('Profile role fetch exception:', e);
       return null;
     }
@@ -100,10 +98,8 @@ export function AuthProvider({ children }) {
 
   const computeRole = useCallback(
     async (u) => {
-      // Try user metadata first
       let r = deriveRoleFromUser(u);
       if (r) return r;
-      // Fallback to profiles table
       r = await fetchProfileRole(u?.id);
       return r || DEFAULT_ROLE;
     },
@@ -117,7 +113,6 @@ export function AuthProvider({ children }) {
     return nextRole;
   }, [user, computeRole]);
 
-  // Initial session load + subscription
   useEffect(() => {
     let isMounted = true;
 
@@ -133,15 +128,12 @@ export function AuthProvider({ children }) {
       } catch (e) {
         if (isMounted) setError(e);
       } finally {
-        // keep safety timeout considerations: don't hang indefinitely
         if (isMounted) setLoading(false);
       }
     };
 
-    // safety timeout to force loading=false even if Supabase event never fires
     initTimeoutRef.current = setTimeout(() => {
       if (isMounted && loading) {
-        // eslint-disable-next-line no-console
         console.warn('Auth init safety timeout reached, proceeding without session.');
         setLoading(false);
       }
@@ -149,8 +141,22 @@ export function AuthProvider({ children }) {
 
     init();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
+      // Minimal diagnostics for logout issues (kept concise)
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[Auth] onAuthStateChange:', event);
+      }
+
+      if (event === 'SIGNED_OUT' || !newSession) {
+        // Explicitly clear all auth-related state to avoid stale closures
+        setSession(null);
+        setUser(null);
+        setRole(DEFAULT_ROLE);
+        setLoading(false);
+        return;
+      }
+
       setSession(newSession || null);
       const u = newSession?.user || null;
       setUser(u);
@@ -225,12 +231,21 @@ export function AuthProvider({ children }) {
     setError(null);
     setActionLoading(true);
     try {
-      const { error: signOutErr } = await supabase.auth.signOut();
+      // For supabase-js v2, use scope to ensure local and refresh token are cleared in all tabs
+      const { error: signOutErr } = await supabase.auth.signOut({ scope: 'global' });
       if (signOutErr) {
         setError(signOutErr);
         return { error: signOutErr };
       }
+      // Defensive: explicitly clear local state in case event propagation is delayed
+      setSession(null);
+      setUser(null);
+      setRole(DEFAULT_ROLE);
+      setLoading(false);
       return { error: null };
+    } catch (e) {
+      setError(e);
+      return { error: e };
     } finally {
       setActionLoading(false);
     }

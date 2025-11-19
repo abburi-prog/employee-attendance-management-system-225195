@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { applyLeave } from "../api/leaveApi";
-import { supabase } from "../supabase";
+import supabase from "../supabase/client";
 import { useToast } from "../components/ToastProvider";
 
 /**

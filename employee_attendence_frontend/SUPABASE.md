@@ -12,14 +12,15 @@ Set these in `.env`:
 ## Client
 
 - Initialized in `src/supabase/client.js` with session persistence and auto-refresh.
+- Always import the singleton client from `src/supabase/client.js` (default export). Avoid creating alternate clients or importing from other paths to prevent duplicate instances.
 
 ## Auth Provider
 
 `src/context/AuthContext.jsx`:
-- Subscribes to `supabase.auth.onAuthStateChange`
+- Subscribes to `supabase.auth.onAuthStateChange` and handles `SIGNED_OUT` by clearing React state (`session`, `user`, `role`, `profile`) to avoid stale closures.
 - Exposes `user`, `session`, `loading`, `profile` (optional), helpers:
   - `signIn(email, password)`
-  - `signOut()`
+  - `signOut()` which uses Supabase JS v2 `await supabase.auth.signOut({ scope: 'global' })` and then defensively clears local state.
 
 Role resolution order:
 1. `user.app_metadata.role` (or `user.user_metadata.role`)
@@ -48,13 +49,13 @@ Supabase Dashboard → Authentication → URL Configuration:
 - Site URL: http://localhost:3000 (dev)
 - Add additional redirect URLs as needed
 
-Ensure this matches `REACT_APP_FRONTEND_URL`.
+Ensure this matches `REACT_APP_FRONTEND_URL` in your `.env`.
 
 ## UI
 
 - `src/pages/Login.jsx` implements email/password login.
-- `src/components/Navbar.jsx` and `src/components/NavBar.jsx` show Login/Logout and hide Admin links for non-admins.
-- `src/routes/AdminRoute.jsx` protects Admin routes with safety timeouts to avoid indefinite loading.
+- `src/components/Navbar.jsx` shows Login/Logout and hides Admin links for non-admins. Ensure the Logout is a button (not inside a Link) and triggers `context.signOut()`; after sign-out, it redirects to `/login`.
+- `src/routes/AdminRoute.jsx` protects Admin routes with safety timeouts to avoid indefinite loading and reacts immediately when `user === null`.
 
 ## Security
 

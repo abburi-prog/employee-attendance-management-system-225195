@@ -29,10 +29,10 @@ export default function Navbar() {
       if (error) {
         setLocalError(error.message || 'Failed to sign out');
       }
-      // Navigate to login regardless; guards will redirect appropriately if already signed out
-      navigate('/login', { replace: true });
     } catch (e) {
       setLocalError(e?.message || 'Failed to sign out');
+    } finally {
+      // Redirect after attempting sign-out; ProtectedRoute will also enforce redirect if user is null
       navigate('/login', { replace: true });
     }
   };
