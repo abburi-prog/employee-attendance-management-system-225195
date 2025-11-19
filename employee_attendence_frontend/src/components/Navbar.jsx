@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import useUserRole from '../hooks/useUserRole';
 
 /**
  * Navbar
@@ -8,11 +9,13 @@ import { useAuth } from '../context/AuthContext';
  * - Shows Login when unauthenticated (navigates to /login)
  * - Shows user email (if available) and Logout when authenticated
  * - Uses NavLink for active route highlighting
+ * - Admin links hidden when role !== 'admin'
  */
 // PUBLIC_INTERFACE
 export default function Navbar() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const role = useUserRole();
 
   const linkBase = 'px-3 py-2 rounded-md text-sm font-medium transition';
   const linkActive = 'bg-blue-50 text-blue-700';
@@ -48,9 +51,11 @@ export default function Navbar() {
           <NavLink to="/leave-balance" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
             Leave Balance
           </NavLink>
-          <NavLink to="/admin/leaves" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-            Admin
-          </NavLink>
+          {role === 'admin' ? (
+            <NavLink to="/admin/leaves" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+              Admin
+            </NavLink>
+          ) : null}
         </div>
 
         <div className="ml-auto flex items-center gap-2">

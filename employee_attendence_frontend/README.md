@@ -18,6 +18,7 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
 
 - TopNav shows app title and user/role badge (fallback to Guest/employee).
 - SideNav shows Dashboard, Attendance, Admin (role === 'admin'), Settings.
+- Navbar and Admin shell hide all admin-only menu entries when profile.role !== 'admin' (RBAC-driven menu visibility).
 - ThemeProvider implements Ocean Professional palette:
   - primary #2563EB, success/secondary #F59E0B, error #EF4444, background #f9fafb, surface #ffffff, text #111827
 - Accessible components with keyboard focus states.
@@ -71,6 +72,9 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
 - RBAC enforced in routes:
   - Admin-only pages are protected by `<AdminRoute />`.
   - Accessing `/admin`, `/admin/leaves`, `/admin/attendance` without an authenticated admin role will redirect to `/login` and no admin UI is rendered.
+- RBAC-driven menu visibility:
+  - Navigation components read `profile.role` from AuthContext (same source as AdminRoute).
+  - Admin-related menu items (Admin, Leave Approvals, Attendance Viewer) are not rendered for non-admin users to prevent visibility and accidental clicks.
 - Local testing tips:
   - If using Supabase, set your user's `profiles.role` to `admin` to access admin routes.
   - If you don't have backend auth yet, you can still run the app normally; admin routes will remain inaccessible until a user session exists with `role === 'admin'`.
@@ -133,6 +137,7 @@ npm run build
 - src/pages/{Dashboard,Attendance,Admin,Settings,NotAuthorized}.jsx
 - src/context/AuthContext.jsx
 - src/supabase/client.js
+- src/routes/config.js (central route config with optional roles metadata for admin-only routes)
 
 ## Notes
 
