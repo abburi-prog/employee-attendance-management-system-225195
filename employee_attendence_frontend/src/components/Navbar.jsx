@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import useUserRole from '../hooks/useUserRole';
 
@@ -10,42 +10,45 @@ import useUserRole from '../hooks/useUserRole';
  * - Shows user email (if available) and Logout when authenticated
  * - Uses NavLink for active route highlighting
  * - Admin links hidden when role !== 'admin'
+ *
+ * Feature flag controlling Sign Out behavior:
+ * - Reads process.env.REACT_APP_ENABLE_LOGOUT
+ * - Defaults to true if the env var is missing/empty
+ * - When true: clicking Logout calls AuthContext.signOut()
+ * - When false: Logout remains visually present but acts as a no-op and shows a tooltip
  */
-// PUBLIC_INTERFACE
+ // PUBLIC_INTERFACE
 export default function Navbar() {
-  const navigate = useNavigate();
   const { user, signOut, actionLoading } = useAuth();
   const role = useUserRole();
   const [localError, setLocalError] = useState('');
 
-  // Feature flag to control whether clicking "Logout" actually performs sign-out.
-  // Set to true to re-enable sign-out behavior.
-  const SIGN_OUT_ENABLED =
-    (process.env.REACT_APP_FEATURE_FLAGS || '').toLowerCase().includes('enable_sign_out=true') ||
-    false;
+  // Prefer REACT_APP_ENABLE_LOGOUT; default to true if missing.
+  const enableLogout = useMemo(() => {
+    const raw = process.env.REACT_APP_ENABLE_LOGOUT;
+    if (raw === undefined || raw === null || raw === '') return true;
+    return String(raw).toLowerCase() === 'true';
+  }, []);
 
   const linkBase = 'px-3 py-2 rounded-md text-sm font-medium transition';
   const linkActive = 'bg-blue-50 text-blue-700';
   const linkInactive = 'text-gray-700 hover:bg-gray-50 hover:text-blue-700';
 
   const handleLogout = async (e) => {
-    // If disabled, swallow click and present a non-intrusive note; don't clear any state or navigate.
-    if (!SIGN_OUT_ENABLED) {
+    if (!enableLogout) {
       e?.preventDefault?.();
-      setLocalError('Sign-out disabled in this environment');
+      setLocalError('Sign-out is disabled in this environment');
       return;
     }
-
     setLocalError('');
     try {
       const { error } = await signOut();
       if (error) {
         setLocalError(error.message || 'Failed to sign out');
       }
-    } catch (e) {
-      setLocalError(e?.message || 'Failed to sign out');
+    } catch (err) {
+      setLocalError(err?.message || 'Failed to sign out');
     }
-    // No local navigate; AuthContext will hard-redirect after clearing
   };
 
   return (
@@ -86,11 +89,10 @@ export default function Navbar() {
                 onClick={handleLogout}
                 className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50"
                 aria-label="Logout"
-                // Keep the UI enabled to preserve look/feel; disable only during real sign-out actionLoading
-                disabled={SIGN_OUT_ENABLED && actionLoading}
-                title={!SIGN_OUT_ENABLED ? 'Sign-out disabled in this environment' : undefined}
+                disabled={enableLogout && actionLoading}
+                title={!enableLogout ? 'Sign-out is disabled in this environment' : undefined}
               >
-                {SIGN_OUT_ENABLED && actionLoading ? 'Signing out…' : 'Logout'}
+                {enableLogout && actionLoading ? 'Signing out…' : 'Logout'}
               </button>
             </>
           ) : (
@@ -104,7 +106,8 @@ export default function Navbar() {
           )}
         </div>
       </div>
-      {localError && !SIGN_OUT_ENABLED ? (
+
+      {localError && !enableLogout ? (
         <div
           className="mx-auto max-w-7xl px-4 pb-2 text-sm"
           style={{ color: 'var(--ocean-error)' }}
