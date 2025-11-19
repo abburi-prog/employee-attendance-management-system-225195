@@ -99,9 +99,9 @@ export default function Navbar() {
             <Link
               to="/login"
               className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50"
-              aria-label="Login"
+              aria-label="Sign in"
             >
-              Login
+              Sign In
             </Link>
           )}
         </div>
