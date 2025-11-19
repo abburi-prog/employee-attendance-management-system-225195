@@ -31,10 +31,8 @@ export default function Navbar() {
       }
     } catch (e) {
       setLocalError(e?.message || 'Failed to sign out');
-    } finally {
-      // Redirect after attempting sign-out; ProtectedRoute will also enforce redirect if user is null
-      navigate('/login', { replace: true });
     }
+    // No local navigate; AuthContext will hard-redirect after clearing
   };
 
   return (

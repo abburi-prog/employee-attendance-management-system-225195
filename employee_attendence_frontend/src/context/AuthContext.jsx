@@ -143,13 +143,12 @@ export function AuthProvider({ children }) {
 
     const { data: subscription } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
-      // Minimal diagnostics for logout issues (kept concise)
       if (process.env.NODE_ENV !== 'production') {
         console.info('[Auth] onAuthStateChange:', event);
       }
 
-      if (event === 'SIGNED_OUT' || !newSession) {
-        // Explicitly clear all auth-related state to avoid stale closures
+      if (event === 'SIGNED_OUT') {
+        // Clear state immediately
         setSession(null);
         setUser(null);
         setRole(DEFAULT_ROLE);
@@ -157,11 +156,23 @@ export function AuthProvider({ children }) {
         return;
       }
 
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        setSession(newSession || null);
+        const u = newSession?.user || null;
+        setUser(u);
+        const computedRole = await computeRole(u);
+        setRole(computedRole);
+        setLoading(false);
+        return;
+      }
+
+      // Default fallback
       setSession(newSession || null);
       const u = newSession?.user || null;
-      setUser(u);
+      setUser(u || null);
       const computedRole = await computeRole(u);
       setRole(computedRole);
+      setLoading(false);
     });
 
     return () => {
@@ -227,24 +238,77 @@ export function AuthProvider({ children }) {
    * logout
    * Signs the current user out using Supabase and lets the auth state subscription clear user/session.
    */
+  const clearLocalAuthArtifacts = () => {
+    try {
+      // Supabase v2 commonly uses keys starting with 'sb-' in localStorage
+      Object.keys(window.localStorage).forEach((k) => {
+        if (k.startsWith('sb-') || k.includes('supabase')) {
+          window.localStorage.removeItem(k);
+        }
+      });
+    } catch {
+      // ignore
+    }
+    try {
+      // Best-effort cookie clearing (path/domain scope may vary)
+      document.cookie
+        .split(';')
+        .map((c) => c.trim())
+        .forEach((cookie) => {
+          const eqPos = cookie.indexOf('=');
+          const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+        });
+    } catch {
+      // ignore
+    }
+  };
+
+  const hardSignOut = () => {
+    // As a last resort: clear storage/cookies and hard reload to login
+    clearLocalAuthArtifacts();
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+    try {
+      window.location.assign('/login');
+    } catch {
+      window.location.href = '/login';
+    }
+  };
+
   const logout = useCallback(async () => {
     setError(null);
     setActionLoading(true);
     try {
-      // For supabase-js v2, use scope to ensure local and refresh token are cleared in all tabs
       const { error: signOutErr } = await supabase.auth.signOut({ scope: 'global' });
-      if (signOutErr) {
-        setError(signOutErr);
-        return { error: signOutErr };
-      }
-      // Defensive: explicitly clear local state in case event propagation is delayed
+      // Clear local state aggressively to avoid stale closures
       setSession(null);
       setUser(null);
       setRole(DEFAULT_ROLE);
       setLoading(false);
+      clearLocalAuthArtifacts();
+
+      if (signOutErr) {
+        setError(signOutErr);
+        // Hard redirect to ensure no SPA cache issues
+        hardSignOut();
+        return { error: signOutErr };
+      }
+
+      // Ensure navigation resets; avoid SPA cache if any persisted session remains
+      try {
+        window.location.assign('/login');
+      } catch {
+        window.location.href = '/login';
+      }
       return { error: null };
     } catch (e) {
       setError(e);
+      // Fallback: force clear and reload
+      hardSignOut();
       return { error: e };
     } finally {
       setActionLoading(false);
