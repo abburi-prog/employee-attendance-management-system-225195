@@ -1,25 +1,9 @@
-import React, { useState } from "react";
-import PropTypes from "prop-types";
+import React, { useState, useContext } from "react";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { useToast } from "./ToastProvider";
-
-/**
- * PUBLIC_INTERFACE
- * ApplyLeaveForm - Leave application form component for submitting employee leave requests.
- * 
- * Props:
- *   onSuccess: function({submittedObject}) - called after successful submission.
- * 
- * This component robustly handles:
- * - Backend URL detection (REACT_APP_API_BASE preferred, REACT_APP_BACKEND_URL fallback)
- * - Auth token propagation (from localStorage "token", injected if present)
- * - Error differentiation (network, validation, unauthorized, generic backend or local fallback)
- * - Graceful fallback to localStorage if backend is not configured
- * - Clean UI feedback via a toast provider
- * 
- * Code style and accents use "Ocean Professional" theme.
- */
+import { getSupabaseClient } from "../lib/supabaseClient";
+import AuthContext from "../context/AuthContext";
 
 const LEAVE_TYPES = [
   { value: "Annual", label: "Annual" },
@@ -28,101 +12,48 @@ const LEAVE_TYPES = [
   { value: "Other", label: "Other" },
 ];
 
-const accentColor = "#2563EB"; // blue
+const accentColor = "#2563EB"; // ocean blue
 const errorColor = "#EF4444";
 
-function getApiBase() {
-  // Prefer explicit API base URL, fallback to BACKEND URL, or return empty string (fallback path)
-  return (
-    (process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim()) ||
-    (process.env.REACT_APP_BACKEND_URL && process.env.REACT_APP_BACKEND_URL.trim()) ||
-    ""
-  );
+// PUBLIC_INTERFACE
+/**
+ * Checks if required Supabase variables are missing.
+ */
+function isSupabaseEnvMissing() {
+  return !process.env.REACT_APP_SUPABASE_URL || !process.env.REACT_APP_SUPABASE_KEY;
 }
 
 // PUBLIC_INTERFACE
-async function submitLeaveRequest(data, token) {
-  const apiBase = getApiBase();
-  if (apiBase) {
-    // POST to /leave/apply (preferred), fallback to /api/leave or /leave-requests for compatibility
-    const endpointCandidates = [
-      `${apiBase.replace(/\/$/, "")}/leave/apply`,
-      `${apiBase.replace(/\/$/, "")}/leave-requests`,
-      `${apiBase.replace(/\/$/, "")}/api/leave`,
-    ];
-    for (const url of endpointCandidates) {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(data),
-        });
-        // Handle specific status codes according to requirements
-        if (res.ok) {
-          return { success: true, record: await res.json(), endpoint: url };
-        }
-        if (res.status === 401) {
-          return {
-            success: false,
-            error: "Unauthorized: Your session may have expired. Please sign in again.",
-            status: 401,
-          };
-        }
-        if (res.status === 400) {
-          let errText = "Validation failed.";
-          try {
-            const j = await res.json();
-            if (j && typeof j.error === "string") errText = j.error;
-            else if (typeof j === "string") errText = j;
-          } catch {}
-          return { success: false, error: errText, status: 400 };
-        }
-        // If not found, try next endpoint; else generic failure
-        if (res.status === 404) continue;
-        // All other backend errors
-        return {
-          success: false,
-          error: `Backend error (${res.status || "unknown"}).`,
-          status: res.status,
-        };
-      } catch (err) {
-        if (err.name === "TypeError" && err.message && err.message.match(/fetch/)) {
-          return {
-            success: false,
-            error: "Network error: Cannot contact backend. Please check your connection or try again later.",
-            network: true,
-          };
-        }
-        // Try the next candidate
-      }
-    }
-    // Backend configured, but none worked
+/**
+ * Returns { userId, userEmail } from context or Supabase client, or null if unavailable.
+ */
+async function getCurrentUserInfo(supabase, contextUser) {
+  // Prioritize AuthContext if provided.
+  if (contextUser) {
     return {
-      success: false,
-      error: "Failed to submit leave request. Please contact administrator or try later.",
+      userId: contextUser.id || contextUser.sub || null,
+      userEmail: contextUser.email || null,
     };
   }
-  // Fallback to localStorage for demos/dev/when backend not set
-  const key = "local_leave_requests";
-  const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
-  const localRecord = {
-    ...data,
-    storedAt: new Date().toISOString(),
-    id: Math.random().toString(36).substring(2),
-    status: "pending",
-  };
-  pendingRequests.push(localRecord);
-  localStorage.setItem(key, JSON.stringify(pendingRequests));
-  return {
-    success: true,
-    local: true,
-    record: localRecord,
-  };
+  // Otherwise, use Supabase auth if available.
+  if (supabase?.auth) {
+    try {
+      const session = await supabase.auth.getSession();
+      const user = session?.data?.session?.user;
+      return {
+        userId: user?.id || null,
+        userEmail: user?.email || null,
+      };
+    } catch {
+      return { userId: null, userEmail: null };
+    }
+  }
+  return { userId: null, userEmail: null };
 }
 
+/**
+ * Returns yyyy-mm-dd string for a Date or date string.
+ */
 function formatDate(date) {
   if (!date) return "";
   const d = typeof date === "string" ? new Date(date) : date;
@@ -145,6 +76,9 @@ function validate({ startDate, endDate, leaveType, reason }) {
   return errors;
 }
 
+/**
+ * ApplyLeaveForm - Submits leave requests to Supabase/postgREST with fallback, user-linkage, and full feedback.
+ */
 const ApplyLeaveForm = ({ onSuccess }) => {
   const [fields, setFields] = useState({
     startDate: "",
@@ -154,9 +88,20 @@ const ApplyLeaveForm = ({ onSuccess }) => {
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [supabaseError, setSupabaseError] = useState(null);
+
   const { show } = useToast();
 
-  // Reset all field and error values
+  // React Hooks must be called unconditionally - so do not wrap in try/catch.
+  const contextUserRaw = useContext(AuthContext);
+  const contextUser = contextUserRaw && typeof contextUserRaw === "object"
+    ? contextUserRaw.user ?? null
+    : null;
+
+  // Either supabase client or null if not configured
+  const supabase = getSupabaseClient();
+  const supabaseMissing = isSupabaseEnvMissing();
+
   const resetForm = () => {
     setFields({
       startDate: "",
@@ -165,6 +110,7 @@ const ApplyLeaveForm = ({ onSuccess }) => {
       reason: "",
     });
     setErrors({});
+    setSupabaseError(null);
   };
 
   // Update form field logic
@@ -182,70 +128,97 @@ const ApplyLeaveForm = ({ onSuccess }) => {
   // PUBLIC_INTERFACE
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Client-side validation
+    setSupabaseError(null);
     const validation = validate(fields);
     setErrors(validation);
     if (Object.keys(validation).length > 0) {
       show({ type: "error", message: "Please correct highlighted errors." });
       return;
     }
+
     setSubmitting(true);
 
-    // Grab session token for auth, if set
-    const token = localStorage.getItem("token");
+    // Preferred: Submit into Supabase
+    if (!supabaseMissing && supabase) {
+      try {
+        const { userId, userEmail } = await getCurrentUserInfo(supabase, contextUser);
 
-    // Compose request object
-    const payload = {
-      ...fields,
-      startDate: formatDate(fields.startDate),
-      endDate: formatDate(fields.endDate),
-      leaveType: fields.leaveType,
-      reason: fields.reason.trim(),
-    };
+        // Insert row into leave_requests: always supply all needed cols (status is 'pending', user_id if present)
+        const { data, error } = await supabase
+          .from("leave_requests")
+          .insert([
+            {
+              user_id: userId || null,
+              start_date: fields.startDate,
+              end_date: fields.endDate,
+              leave_type: fields.leaveType,
+              reason: fields.reason,
+              status: "pending",
+              created_at: new Date().toISOString(),
+            }
+          ])
+          .select();
 
-    const result = await submitLeaveRequest(payload, token);
-    setSubmitting(false);
+        if (error) {
+          setSupabaseError(error.message);
+          show({ type: "error", message: `Leave not submitted: ${error.message}` });
+          setSubmitting(false);
+          return;
+        }
+        show({ type: "success", message: "Leave request submitted successfully!" });
+        if (onSuccess && typeof onSuccess === "function") onSuccess(data?.[0] || {});
+        resetForm();
+        setSubmitting(false);
+        return;
+      } catch (err) {
+        setSupabaseError(err?.message || "Unknown error");
+        show({
+          type: "error",
+          message: `Could not submit leave: ${err?.message || "Unknown error"}`,
+        });
+        setSubmitting(false);
+        return;
+      }
+    }
 
-    if (result.success) {
+    // Fallback: LocalStorage (only if env missing or client missing)
+    try {
+      const key = "local_leave_requests";
+      const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
+      const localRecord = {
+        ...fields,
+        storedAt: new Date().toISOString(),
+        id: Math.random().toString(36).substring(2),
+        status: "pending",
+        user_id: contextUser?.id || null,
+      };
+      pendingRequests.push(localRecord);
+      localStorage.setItem(key, JSON.stringify(pendingRequests));
       show({
         type: "success",
-        message:
-          "Leave request submitted successfully." +
-          (result.local
-            ? " (Stored locally – not sent to backend!)"
-            : ""),
+        message: "Leave request submitted (stored locally until admin sets up Supabase)",
       });
-      if (typeof onSuccess === "function") {
-        onSuccess(result.record);
-      }
+      if (onSuccess && typeof onSuccess === "function") onSuccess(localRecord);
       resetForm();
-    } else if (result.status === 401) {
+      setSubmitting(false);
+    } catch (err) {
+      setSupabaseError(`Could not save leave locally: ${err.message || ""}`);
       show({
         type: "error",
-        message: result.error || "Unauthorized: Your session may have expired. Please sign in again.",
+        message: `Could not store leave locally: ${err?.message || "Unknown error"}`,
       });
-    } else if (result.status === 400) {
-      show({
-        type: "error",
-        message: "Validation error: " + (result.error || ""),
-      });
-    } else if (result.network) {
-      show({ type: "error", message: result.error });
-    } else {
-      show({
-        type: "error",
-        message: result.error || "Failed to submit leave request.",
-      });
+      setSubmitting(false);
     }
   };
 
-  // Form UI with accent color and clear errors
+  // UI
   return (
     <Card
       style={{
         maxWidth: 470,
         margin: "2rem auto",
         background: "#fff",
+        boxShadow: "0 1px 4px 0 #a5b4fc20",
       }}
       shadow="md"
     >
@@ -253,13 +226,46 @@ const ApplyLeaveForm = ({ onSuccess }) => {
         style={{
           color: accentColor,
           fontWeight: 600,
-          fontSize: "1.4rem",
-          marginBottom: "16px",
+          fontSize: "1.35rem",
+          marginBottom: "1rem",
           letterSpacing: "-.01em",
         }}
       >
         Apply for Leave
       </h2>
+      {/* Notice for missing Supabase environment */}
+      {supabaseMissing && (
+        <div
+          className="mb-3 p-3 border border-amber-400 rounded bg-yellow-50 text-amber-700 text-sm"
+          style={{
+            border: "1.5px solid #fbbf24",
+            background: "#fefce8",
+            color: "#92400e",
+            marginBottom: 12,
+          }}
+        >
+          Supabase configuration missing.<br />
+          <b>
+            Please ask the administrator to set <code>REACT_APP_SUPABASE_URL</code> and <code>REACT_APP_SUPABASE_KEY</code>.
+          </b>
+          <div style={{ fontSize: "0.93em", color: "#86722f", marginTop: 2 }}>
+            Leave requests will be stored locally until Supabase setup is complete.
+          </div>
+        </div>
+      )}
+      {supabaseError && (
+        <div
+          className="mb-4 p-3 border border-red-400 rounded bg-red-50 text-red-700 text-sm"
+          style={{
+            border: "1.5px solid #ef4444",
+            background: "#fef2f2",
+            color: errorColor,
+            marginBottom: 12,
+          }}
+        >
+          {supabaseError}
+        </div>
+      )}
       <form
         data-testid="apply-leave-form"
         onSubmit={handleSubmit}
@@ -267,20 +273,18 @@ const ApplyLeaveForm = ({ onSuccess }) => {
       >
         <div className="mb-4">
           <label className="block text-sm mb-1 font-medium" htmlFor="startDate">
-            Start Date
-            <span style={{ color: errorColor }}>*</span>
+            Start Date <span style={{ color: errorColor }}>*</span>
           </label>
           <input
             type="date"
             id="startDate"
             name="startDate"
-            className={`border rounded px-3 py-2 w-full focus:outline-none ${
-              errors.startDate ? "border-red-500" : "border-gray-300"
-            }`}
+            className={`border rounded px-3 py-2 w-full focus:outline-none ${errors.startDate ? "border-red-500" : "border-gray-300"}`}
             value={fields.startDate}
             onChange={(e) => onFieldChange("startDate", e.target.value)}
             min={formatDate(new Date())}
             required
+            style={errors.startDate ? { borderColor: errorColor } : {}}
           />
           {errors.startDate && (
             <small style={{ color: errorColor }}>{errors.startDate}</small>
@@ -288,20 +292,18 @@ const ApplyLeaveForm = ({ onSuccess }) => {
         </div>
         <div className="mb-4">
           <label className="block text-sm mb-1 font-medium" htmlFor="endDate">
-            End Date
-            <span style={{ color: errorColor }}>*</span>
+            End Date <span style={{ color: errorColor }}>*</span>
           </label>
           <input
             type="date"
             id="endDate"
             name="endDate"
-            className={`border rounded px-3 py-2 w-full focus:outline-none ${
-              errors.endDate ? "border-red-500" : "border-gray-300"
-            }`}
+            className={`border rounded px-3 py-2 w-full focus:outline-none ${errors.endDate ? "border-red-500" : "border-gray-300"}`}
             value={fields.endDate}
             onChange={(e) => onFieldChange("endDate", e.target.value)}
             min={fields.startDate || formatDate(new Date())}
             required
+            style={errors.endDate ? { borderColor: errorColor } : {}}
           />
           {errors.endDate && (
             <small style={{ color: errorColor }}>{errors.endDate}</small>
@@ -309,18 +311,16 @@ const ApplyLeaveForm = ({ onSuccess }) => {
         </div>
         <div className="mb-4">
           <label className="block text-sm mb-1 font-medium" htmlFor="leaveType">
-            Leave Type
-            <span style={{ color: errorColor }}>*</span>
+            Leave Type <span style={{ color: errorColor }}>*</span>
           </label>
           <select
             id="leaveType"
             name="leaveType"
-            className={`border rounded px-3 py-2 w-full focus:outline-none ${
-              errors.leaveType ? "border-red-500" : "border-gray-300"
-            }`}
+            className={`border rounded px-3 py-2 w-full focus:outline-none ${errors.leaveType ? "border-red-500" : "border-gray-300"}`}
             value={fields.leaveType}
             onChange={(e) => onFieldChange("leaveType", e.target.value)}
             required
+            style={errors.leaveType ? { borderColor: errorColor } : {}}
           >
             <option value="">Select leave type</option>
             {LEAVE_TYPES.map((type) => (
@@ -335,21 +335,19 @@ const ApplyLeaveForm = ({ onSuccess }) => {
         </div>
         <div className="mb-4">
           <label className="block text-sm mb-1 font-medium" htmlFor="reason">
-            Reason
-            <span style={{ color: errorColor }}>*</span>
+            Reason <span style={{ color: errorColor }}>*</span>
           </label>
           <textarea
             id="reason"
             name="reason"
-            className={`border rounded px-3 py-2 w-full focus:outline-none resize-vertical min-h-[64px] ${
-              errors.reason ? "border-red-500" : "border-gray-300"
-            }`}
+            className={`border rounded px-3 py-2 w-full focus:outline-none resize-vertical min-h-[64px] ${errors.reason ? "border-red-500" : "border-gray-300"}`}
             value={fields.reason}
             onChange={(e) => onFieldChange("reason", e.target.value)}
             required
             maxLength={500}
             placeholder="Briefly explain the reason for your leave"
             aria-describedby="reasonHelp"
+            style={errors.reason ? { borderColor: errorColor } : {}}
           />
           <small id="reasonHelp" className="text-gray-500">
             Max 500 characters.
@@ -369,6 +367,7 @@ const ApplyLeaveForm = ({ onSuccess }) => {
               color: "#fff",
               minWidth: 120,
               opacity: submitting ? 0.7 : 1,
+              transition: "opacity 0.2s"
             }}
             disabled={submitting}
             aria-busy={submitting}
@@ -379,10 +378,6 @@ const ApplyLeaveForm = ({ onSuccess }) => {
       </form>
     </Card>
   );
-};
-
-ApplyLeaveForm.propTypes = {
-  onSuccess: PropTypes.func,
 };
 
 export default ApplyLeaveForm;
