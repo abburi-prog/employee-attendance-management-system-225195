@@ -18,12 +18,14 @@ import Login from "./pages/Login";
 import AdminDashboardShell from "./pages/admin/AdminDashboard";
 import LeaveApprovals from "./pages/admin/LeaveApprovals";
 import AttendanceViewer from "./pages/admin/AttendanceViewer";
+import AdminRoute from './routes/AdminRoute';
 
 /**
  * Routing contract (temporary diagnostic mode):
  * - "/" → redirects to "/login"
  * - "/login" is public (standalone, not wrapped by Layout)
- * - Protected routes: /dashboard, /attendance, /apply-leave, /my-leaves, /leave-balance, /admin/leaves, /admin, /settings, /not-authorized
+ * - Protected routes: /dashboard, /attendance, /apply-leave, /my-leaves, /leave-balance, /settings
+ * - Admin-only: /admin, /admin/leaves, /admin/attendance (all gated by <AdminRoute />)
  * - No catch-all ("*") route to avoid unexpected redirects during diagnosis
  */
 
@@ -85,7 +87,7 @@ function AppShell() {
               <Route path="/login" element={<Login />} />
             </Route>
 
-            {/* Protected routes only inside Layout */}
+            {/* Protected routes inside Layout */}
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
@@ -93,19 +95,21 @@ function AppShell() {
                 <Route path="/apply-leave" element={<ApplyLeave />} />
                 <Route path="/my-leaves" element={<MyLeaveHistory />} />
                 <Route path="/leave-balance" element={<LeaveBalance />} />
-                {/* Legacy admin pages retained */}
-                <Route path="/admin/leaves" element={<AdminLeaveDashboard />} />
-                <Route path="/admin" element={<Admin />} />
-
-                {/* New Admin Dashboard Shell with nested routes */}
-                <Route path="/admin/*" element={<AdminDashboardShell />}>
-                  <Route index element={<Navigate to="/admin/leaves" replace />} />
-                  <Route path="leaves" element={<LeaveApprovals />} />
-                  <Route path="attendance" element={<AttendanceViewer />} />
-                </Route>
-
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/not-authorized" element={<NotAuthorized />} />
+
+                {/* Admin-only routes gated by AdminRoute */}
+                <Route element={<AdminRoute />}>
+                  {/* Legacy single admin pages retained for compatibility */}
+                  <Route path="/admin" element={<Admin />} />
+                  <Route path="/admin/leaves" element={<AdminLeaveDashboard />} />
+                  {/* Admin shell and nested routes */}
+                  <Route path="/admin/*" element={<AdminDashboardShell />}>
+                    <Route index element={<Navigate to="/admin/leaves" replace />} />
+                    <Route path="leaves" element={<LeaveApprovals />} />
+                    <Route path="attendance" element={<AttendanceViewer />} />
+                  </Route>
+                </Route>
               </Route>
             </Route>
 

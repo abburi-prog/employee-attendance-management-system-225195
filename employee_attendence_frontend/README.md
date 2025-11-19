@@ -66,8 +66,14 @@ Styled with Tailwind (Ocean Professional theme). Supabase client is configured f
 
 ## Authentication and Roles
 
-- Auth remains optional. Role is resolved from profile.role when available; otherwise defaults to 'employee'.
-- Admin menu item is hidden for non-admin; direct /admin access renders NotAuthorized.
+- Auth remains optional. Role is resolved from `profiles.role` when available; otherwise defaults to `employee`.
+- Admin navigation item is hidden for non-admin users.
+- RBAC enforced in routes:
+  - Admin-only pages are protected by `<AdminRoute />`.
+  - Accessing `/admin`, `/admin/leaves`, `/admin/attendance` without an authenticated admin role will redirect to `/login` and no admin UI is rendered.
+- Local testing tips:
+  - If using Supabase, set your user's `profiles.role` to `admin` to access admin routes.
+  - If you don't have backend auth yet, you can still run the app normally; admin routes will remain inaccessible until a user session exists with `role === 'admin'`.
 
 ## Environment
 
