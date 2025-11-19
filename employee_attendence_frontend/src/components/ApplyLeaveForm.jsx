@@ -1,9 +1,10 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useRef } from "react";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { useToast } from "./ToastProvider";
 import { getSupabaseClient } from "../lib/supabaseClient";
 import AuthContext from "../context/AuthContext";
+import { v4 as uuidv4 } from "uuid"; // for client-generated ids
 
 const LEAVE_TYPES = [
   { value: "Annual", label: "Annual" },
@@ -104,6 +105,8 @@ const ApplyLeaveForm = ({ onSuccess }) => {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [supabaseError, setSupabaseError] = useState(null);
+  const [lastLocalId, setLastLocalId] = useState(null);
+  const [retryingSubmit, setRetryingSubmit] = useState(false);
 
   const { show } = useToast();
 
@@ -117,6 +120,10 @@ const ApplyLeaveForm = ({ onSuccess }) => {
   const supabase = getSupabaseClient();
   const supabaseMissing = isSupabaseEnvMissing();
 
+  // Ref to track last failed local request for retry
+  const lastFailedLocalRef = useRef(null);
+
+  // Reset form helper - move to top for safe use in all handlers
   const resetForm = () => {
     setFields({
       startDate: "",
@@ -128,7 +135,7 @@ const ApplyLeaveForm = ({ onSuccess }) => {
     setSupabaseError(null);
   };
 
-  // Update form field logic
+  // Update form field logic - move to top
   const onFieldChange = (name, value) => {
     setFields((old) => ({
       ...old,
@@ -140,8 +147,94 @@ const ApplyLeaveForm = ({ onSuccess }) => {
     }));
   };
 
+  // Deduplication utility for client-side requests
+  function getDedupId(fieldsObj) {
+    // We want a deterministic, unique id: hash form values + current user + created_at for retries
+    // v4 UUID for brand new submission, else persists across attempts
+    return fieldsObj.client_id || uuidv4();
+  }
+
+  // Save failed request locally for retry
+  function storeLocalRequest(localRecord) {
+    const key = "local_leave_requests";
+    const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
+    // Remove duplicates (by id)
+    const filtered = pendingRequests.filter((req) => req.id !== localRecord.id);
+    filtered.push(localRecord);
+    localStorage.setItem(key, JSON.stringify(filtered));
+    setLastLocalId(localRecord.id);
+    lastFailedLocalRef.current = localRecord;
+  }
+
+  // Remove request from local fallback store after successful retry
+  function removeLocalRequestById(id) {
+    if (!id) return;
+    const key = "local_leave_requests";
+    const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
+    const filtered = pendingRequests.filter((req) => req.id !== id);
+    localStorage.setItem(key, JSON.stringify(filtered));
+  }
+
+  // Utility function: Exponential backoff with per-attempt timeout and offline awareness
+  async function retrySupabaseInsert(record, maxAttempts = 3, baseTimeoutMs = 5000) {
+    let attempt = 0;
+    let lastError = null;
+    while (attempt < maxAttempts) {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        // Immediately abort if user is offline
+        throw new Error("offline");
+      }
+      attempt += 1;
+      // Per-attempt timeout (5s, 2x, 4x); maxAttempts=3 → 1s, 2s, 4s
+      const delay = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+      let didTimeout = false;
+      let result, error;
+
+      try {
+        const insertOp = supabase
+          .from("leave_requests")
+          .insert([record])
+          .select();
+
+        // Per-attempt timeout, but never exceeding baseTimeoutMs (minimum of backoff or total timeout)
+        const resultPromise = Promise.race([
+          insertOp,
+          new Promise((_, reject) =>
+            setTimeout(() => {
+              didTimeout = true;
+              if (controller) controller.abort();
+              reject(new Error("Request timed out"));
+            }, Math.min(delay, baseTimeoutMs))
+          )
+        ]);
+        ({ data: result, error } = await resultPromise);
+        if (error) {
+          lastError = error;
+        } else if (result && !error) {
+          // Success!
+          return result;
+        }
+      } catch (e) {
+        lastError = e;
+        if (e.message === "offline") throw e;
+        if (didTimeout || (e && e.name === "AbortError")) {
+          // Continue to retry on timeout
+        } else {
+          // If not a network/timeout error, do not retry more
+          break;
+        }
+      }
+      // Next attempt waits exponentially (backoff)
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    // After attempts exhausted
+    throw lastError || new Error("Supabase insert failed after retries");
+  }
+
   // PUBLIC_INTERFACE
-  // PUBLIC_INTERFACE
+  // - Main form submit handler, now with robust retry, deduplication, offline fallback,
+  // feedback for Ocean Professional UI, and error-safe local save.
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSupabaseError(null);
@@ -154,108 +247,101 @@ const ApplyLeaveForm = ({ onSuccess }) => {
 
     setSubmitting(true);
 
-    // Utility: timeout promise helper
-    function timeoutPromise(ms, ctrl) {
-      return new Promise((_, reject) =>
-        setTimeout(() => {
-          if (ctrl) ctrl.abort();
-          reject(new Error("Request timed out"));
-        }, ms)
-      );
+    const generatedId = getDedupId(fields); // Use/assign client id for dedup
+    const leaveRecord = {
+      user_id: contextUser?.id || null,
+      start_date: fields.startDate,
+      end_date: fields.endDate,
+      leave_type: fields.leaveType,
+      reason: fields.reason,
+      status: "pending",
+      created_at: new Date().toISOString(),
+      client_id: generatedId,
+      id: generatedId,
+    };
+
+    // Check for offline mode
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      // Store locally, notify user
+      storeLocalRequest({
+        ...leaveRecord,
+        storedAt: new Date().toISOString(),
+        offline: true,
+      });
+      setSupabaseError("Saved locally, will sync when online.");
+      show({
+        type: "info",
+        message: "Offline: Saved locally. Tap 'Retry submit' when back online.",
+      });
+      setSubmitting(false);
+      return;
     }
 
-    // Preferred: Submit into Supabase with explicit timeout (AbortController, 8s)
+    // If Supabase config present, attempt exponential backoff retry
     if (!supabaseMissing && supabase && typeof supabase.from === "function") {
-      let abortController;
       try {
-        // If fetch is used in supabase-js, use AbortController for modern browsers.
-        if (typeof window !== "undefined" && window.AbortController) {
-          abortController = new window.AbortController();
-        }
-        const { userId, userEmail } = await getCurrentUserInfo(supabase, contextUser);
+        const { userId } = await getCurrentUserInfo(supabase, contextUser);
+        leaveRecord.user_id = userId || leaveRecord.user_id;
 
-        // Assemble Supabase insert with explicit timeout race
-        const insertPromise =
-          supabase
-            .from("leave_requests")
-            .insert([
-              {
-                user_id: userId || null,
-                start_date: fields.startDate,
-                end_date: fields.endDate,
-                leave_type: fields.leaveType,
-                reason: fields.reason,
-                status: "pending",
-                created_at: new Date().toISOString(),
-              }
-            ])
-            .select();
-
-        // Race insert with timeout (8s)
-        let data, error;
-        try {
-          ({ data, error } = await Promise.race([
-            insertPromise,
-            timeoutPromise(8000, abortController)
-          ]));
-        } catch (raceErr) {
-          if (raceErr.message && raceErr.message.includes("timed out")) {
-            setSupabaseError("Network timeout: Supabase did not respond. Please try again or check internet connection.");
-            show({ type: "error", message: "Timeout: Supabase did not respond. Check your connection or try later." });
-          } else if (raceErr.name === "AbortError" || raceErr.message === "The operation was aborted.") {
-            setSupabaseError("The request was aborted (timeout). Try again.");
-            show({ type: "error", message: "Request aborted (timeout). Try again." });
-          } else {
-            setSupabaseError(`Network error: ${raceErr.message || "Unknown error"}`);
-            show({ type: "error", message: `Network error: ${raceErr?.message || "Unknown"}` });
-          }
-          return;
-        }
-
-        if (error) {
-          setSupabaseError(error.message);
-          show({ type: "error", message: `Leave not submitted: ${error.message}` });
-          return;
-        }
+        const result = await retrySupabaseInsert(leaveRecord, 3, 5000);
         show({ type: "success", message: "Leave request submitted successfully!" });
-        if (onSuccess && typeof onSuccess === "function") onSuccess(data?.[0] || {});
+        if (onSuccess && typeof onSuccess === "function")
+          onSuccess((result && result[0]) || leaveRecord);
+
+        removeLocalRequestById(leaveRecord.id);
+        setLastLocalId(null);
         resetForm();
+        setSubmitting(false);
         return;
       } catch (err) {
-        if (err?.name === "AbortError" || (err?.message && err.message.includes("aborted"))) {
-          setSupabaseError("Request aborted or timed out.");
-          show({ type: "error", message: "Submission aborted or timed out." });
-        } else {
-          setSupabaseError(err?.message || "Unknown error");
-          show({
-            type: "error",
-            message: `Could not submit leave: ${err?.message || "Unknown error"}`,
+        // If offline detected during retry, fall back to local
+        if (err.message === "offline") {
+          storeLocalRequest({
+            ...leaveRecord,
+            storedAt: new Date().toISOString(),
+            offline: true,
           });
+          setSupabaseError("Saved locally, will sync when online. Use 'Retry submit' to resubmit.");
+          show({
+            type: "info",
+            message: "Offline: Saved locally. Tap 'Retry submit' when back online.",
+          });
+          resetForm();
+          setSubmitting(false);
+          return;
         }
-        return;
-      } finally {
+        // If all attempts failed (timeout or network), fall back and show retry
+        storeLocalRequest({
+          ...leaveRecord,
+          storedAt: new Date().toISOString(),
+          failed: true,
+        });
+        setSupabaseError("Could not submit: timeout or network error. Saved locally, retry available.");
+        show({
+          type: "warning",
+          message:
+            "Submission failed (timeout/network). Saved locally. Tap 'Retry submit' to try again when online.",
+        });
         setSubmitting(false);
+        return;
       }
     }
 
-    // Fallback: LocalStorage (only if env missing or supabase client not present)
+    // Fallback: LocalStorage (legacy - env misconfig/missing)
     try {
-      const key = "local_leave_requests";
-      const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
-      const localRecord = {
-        ...fields,
+      storeLocalRequest({
+        ...leaveRecord,
         storedAt: new Date().toISOString(),
-        id: Math.random().toString(36).substring(2),
-        status: "pending",
-        user_id: contextUser?.id || null,
-      };
-      pendingRequests.push(localRecord);
-      localStorage.setItem(key, JSON.stringify(pendingRequests));
-      show({
-        type: "success",
-        message: "Leave request submitted (stored locally until admin sets up Supabase)",
+        fallback: true,
       });
-      if (onSuccess && typeof onSuccess === "function") onSuccess(localRecord);
+      setSupabaseError(
+        "Supabase unavailable; leave saved locally until administrator sets up Supabase."
+      );
+      show({
+        type: "info",
+        message: "Supabase not configured: leave stored locally for now.",
+      });
+      if (onSuccess && typeof onSuccess === "function") onSuccess(leaveRecord);
       resetForm();
     } catch (err) {
       setSupabaseError(`Could not save leave locally: ${err.message || ""}`);
@@ -265,6 +351,75 @@ const ApplyLeaveForm = ({ onSuccess }) => {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // PUBLIC_INTERFACE
+  // Retry button handler for local -> Supabase resubmission
+  const handleRetrySubmit = async () => {
+    if (!lastLocalId) {
+      show({ type: "info", message: "Nothing to retry." });
+      return;
+    }
+    setRetryingSubmit(true);
+    setSupabaseError(null);
+
+    const key = "local_leave_requests";
+    const pendingRequests = JSON.parse(localStorage.getItem(key) || "[]");
+    const retryRequest = pendingRequests.find((req) => req.id === lastLocalId);
+
+    if (!retryRequest) {
+      show({ type: "info", message: "No saved request found for retry." });
+      setRetryingSubmit(false);
+      setLastLocalId(null);
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setSupabaseError("Still offline. Please go online to retry.");
+      show({ type: "warning", message: "Still offline. Connect to internet to retry." });
+      setRetryingSubmit(false);
+      return;
+    }
+
+    if (!supabaseMissing && supabase && typeof supabase.from === "function") {
+      try {
+        // Remove non-schema attributes before send
+        const {
+          storedAt,
+          failed,
+          offline,
+          fallback,
+          ...prepared
+        } = retryRequest;
+        const result = await retrySupabaseInsert(prepared, 3, 5000);
+        show({ type: "success", message: "Leave request synced/submitted!" });
+        if (onSuccess && typeof onSuccess === "function")
+          onSuccess((result && result[0]) || prepared);
+        removeLocalRequestById(retryRequest.id);
+        setLastLocalId(null);
+        setSupabaseError(null);
+      } catch (err) {
+        setSupabaseError(
+          "Retry failed: " +
+            (err && err.message === "offline"
+              ? "Still offline."
+              : err?.message || "timeout/network error. Tap 'Retry' again.")
+        );
+        show({
+          type: "warning",
+          message: "Resubmission failed. Check network or try again.",
+        });
+      } finally {
+        setRetryingSubmit(false);
+      }
+    } else {
+      show({
+        type: "info",
+        message: "Supabase config/connection still missing. Cannot resubmit.",
+      });
+      setSupabaseError("Supabase unavailable; please try again later.");
+      setRetryingSubmit(false);
     }
   };
 
@@ -312,15 +467,40 @@ const ApplyLeaveForm = ({ onSuccess }) => {
       )}
       {supabaseError && (
         <div
-          className="mb-4 p-3 border border-red-400 rounded bg-red-50 text-red-700 text-sm"
+          className="mb-4 p-3 border border-red-400 rounded bg-red-50 text-red-700 text-sm flex items-center gap-2"
           style={{
             border: "1.5px solid #ef4444",
             background: "#fef2f2",
             color: errorColor,
             marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
           }}
         >
-          {supabaseError}
+          <span style={{ flex: 1 }}>{supabaseError}</span>
+          {/* Show 'Retry submit' if failure was due to timeout/offline and local copy exists */}
+          {lastLocalId && (
+            <Button
+              type="button"
+              color="primary"
+              style={{
+                background: accentColor,
+                color: "#fff",
+                fontSize: "0.91em",
+                minWidth: "100px",
+                marginLeft: 8,
+                opacity: retryingSubmit ? 0.7 : 1,
+                transition: "opacity 0.2s",
+                borderRadius: 6,
+                height: 32,
+              }}
+              disabled={retryingSubmit}
+              onClick={handleRetrySubmit}
+              aria-busy={retryingSubmit ? "true" : undefined}
+            >
+              {retryingSubmit ? "Retrying..." : "Retry submit"}
+            </Button>
+          )}
         </div>
       )}
       <form
