@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import ThemeProvider from './theme/ThemeProvider';
 import ToastProvider from './components/ToastProvider';
 import Layout from './components/layout/Layout';
+import PublicNavbar from './components/layout/PublicNavbar';
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
 import Admin from './pages/Admin';
@@ -134,7 +135,17 @@ function AppShell() {
 
             {/* Public route: Login is standalone (no Layout) */}
             <Route element={<PublicOnlyRoute />}>
-              <Route path="/login" element={<Login />} />
+              {/* Show a minimal public navbar on public pages */}
+              <Route
+                element={
+                  <>
+                    <PublicNavbar />
+                    <Outlet />
+                  </>
+                }
+              >
+                <Route path="/login" element={<Login />} />
+              </Route>
             </Route>
 
             {/* Protected routes inside Layout */}
