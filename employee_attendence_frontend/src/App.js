@@ -21,13 +21,13 @@ import LeaveApprovals from "./pages/admin/LeaveApprovals";
 import AttendanceViewer from "./pages/admin/AttendanceViewer";
 import AdminRoute from './routes/AdminRoute';
 import Account from "./pages/Account";
-import Leave from "./pages/Leave"; // NEW
+import Leave from "./pages/Leave"; // Leave page
 
 /**
  * Routing contract (temporary diagnostic mode):
  * - "/" → redirects to "/login"
  * - "/login" is public (standalone, not wrapped by Layout)
- * - Protected routes: /dashboard, /attendance, /apply-leave, /my-leaves, /leave-balance, /settings, /leave (NEW)
+ * - Protected routes: /dashboard, /attendance, /apply-leave, /my-leaves, /leave-balance, /settings, /leave
  * - Admin-only: /admin, /admin/leaves, /admin/attendance (all gated by <AdminRoute />)
  * - No catch-all ("*") route to avoid unexpected redirects during diagnosis
  */
@@ -137,7 +137,6 @@ function AppShell() {
 
             {/* Public route: Login is standalone (no Layout) */}
             <Route element={<PublicOnlyRoute />}>
-              {/* Show a minimal public navbar on public pages */}
               <Route
                 element={
                   <>
@@ -155,7 +154,7 @@ function AppShell() {
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/attendance" element={<Attendance />} />
-                <Route path="/leave" element={<Leave />} /> {/* NEW Leave route */}
+                <Route path="/leave" element={<Leave />} /> {/* Leave route */}
                 <Route path="/apply-leave" element={<ApplyLeave />} />
                 <Route path="/my-leaves" element={<MyLeaveHistory />} />
                 <Route path="/leave-balance" element={<LeaveBalance />} />
@@ -165,10 +164,8 @@ function AppShell() {
 
                 {/* Admin-only routes gated by AdminRoute */}
                 <Route element={<AdminRoute />}>
-                  {/* Legacy single admin pages retained for compatibility */}
                   <Route path="/admin" element={<Admin />} />
                   <Route path="/admin/leaves" element={<AdminLeaveDashboard />} />
-                  {/* Admin shell and nested routes */}
                   <Route path="/admin/*" element={<AdminDashboardShell />}>
                     <Route index element={<Navigate to="/admin/leaves" replace />} />
                     <Route path="leaves" element={<LeaveApprovals />} />
@@ -177,12 +174,6 @@ function AppShell() {
                 </Route>
               </Route>
             </Route>
-
-            {/* 
-              Temporary diagnostic change:
-              - Catch-all wildcard route removed to prevent unwanted redirects (e.g., loops or blank screens). 
-              - AuthBoundaryRedirect is intentionally not used for now.
-            */}
           </Routes>
         </ToastProvider>
       </ThemeProvider>

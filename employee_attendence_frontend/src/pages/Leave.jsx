@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+// import Button from "../components/ui/Button"; // Uncomment if you prefer the UI library button
 
 /**
  * Leave Page
@@ -71,6 +72,22 @@ export default function Leave() {
           justifyContent: "flex-end",
           marginBottom: "1.5rem"
         }}>
+          {/* Use the Button component if desired */}
+          {/* <Button
+            color="primary"
+            style={{
+              background: theme.primary,
+              color: "#fff",
+              borderRadius: "0.5rem",
+              fontWeight: 500,
+              padding: "0.6rem 1.4rem",
+              boxShadow: "0 2px 6px 0 rgba(37,99,235,0.08)",
+            }}
+            onClick={() => navigate("/apply-leave")}
+            data-testid="leave-request-btn"
+          >
+            Request Leave
+          </Button> */}
           <button
             style={{
               background: `linear-gradient(90deg, ${theme.primary} 80%, ${theme.secondary} 120%)`,
